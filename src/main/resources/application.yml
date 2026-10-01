@@ -6,11 +6,6 @@ sdlc:
     models:
       code: ${SDLC_OLLAMA_MODEL_CODE:qwen2.5-coder:7b}
       fast: ${SDLC_OLLAMA_MODEL_FAST:llama3.2}
-  mcp:
-    servers:
-      git-mcp:
-        command: "node"
-        script-path: "/opt/mcp-servers/git-mcp-server.js"
 
 spring:
   ai:
@@ -22,6 +17,42 @@ spring:
         options:
           model: ${SDLC_OLLAMA_MODEL_CODE:qwen2.5-coder:7b}
           temperature: 0.2
+    mcp:
+      client:
+        enabled: true
+        name: agentic-swe-engine
+        version: 1.0.0
+        type: SYNC
+        request-timeout: 180s
+        toolcallback:
+          enabled: false
+        stdio:
+          connections:
+            github:
+              command: ${SDLC_DOCKER_COMMAND:docker}
+              args:
+                - run
+                - -i
+                - --rm
+                - --mount
+                - type=bind,src=${GITHUB_APP_PRIVATE_KEY_FILE},dst=/run/secrets/github-app.pem,readonly
+                - -e
+                - GITHUB_APP_ID
+                - -e
+                - GITHUB_APP_INSTALLATION_ID
+                - -e
+                - GITHUB_APP_PRIVATE_KEY_PATH
+                - -e
+                - GITHUB_HOST
+                - -e
+                - GITHUB_TOOLSETS
+                - ghcr.io/github/github-mcp-server:v1.13.0
+              env:
+                GITHUB_APP_ID: ${GITHUB_APP_ID}
+                GITHUB_APP_INSTALLATION_ID: ${GITHUB_APP_INSTALLATION_ID}
+                GITHUB_APP_PRIVATE_KEY_PATH: /run/secrets/github-app.pem
+                GITHUB_HOST: ${SDLC_GITHUB_HOST:https://github.com}
+                GITHUB_TOOLSETS: repos,git,actions,pull_requests
 
 logging:
   level:

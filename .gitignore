@@ -1,5 +1,14 @@
 target/
+node_modules/
 *.class
 .idea/
 *.iml
 .vscode/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+/secrets/

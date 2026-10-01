@@ -1,0 +1,12 @@
+services:
+  sdlc-ollama-engine:
+    image: ollama/ollama:latest
+    container_name: sdlc-ollama-engine
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    restart: unless-stopped
+
+volumes:
+  ollama-models:

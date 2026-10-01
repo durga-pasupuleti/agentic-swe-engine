@@ -28,11 +28,10 @@ public class HybridOrchestratorController {
     @PostMapping("/jobs")
     public ResponseEntity<Map<String, Object>> triggerSdlcJob(
             @RequestHeader("X-User-Identity") String userIdentity,
-            @RequestHeader("X-VCS-Token") String vcsToken,
             @RequestBody(required = false) Map<String, String> payload) {
 
-        if (!isValidIdentity(userIdentity) || !isValidToken(vcsToken) || payload == null) {
-            return error(HttpStatus.BAD_REQUEST, "Missing or invalid request credentials or body.");
+        if (!isValidIdentity(userIdentity) || payload == null) {
+            return error(HttpStatus.BAD_REQUEST, "Missing or invalid user identity or request body.");
         }
 
         String requirement = payload.get("requirement");
@@ -55,7 +54,7 @@ public class HybridOrchestratorController {
             return error(HttpStatus.BAD_REQUEST, "Job alias contains unsupported characters or is too long.");
         }
 
-        SdlcState newState = new SdlcState(requirement, repositoryId, jobAlias, userIdentity, vcsToken);
+        SdlcState newState = new SdlcState(requirement, repositoryId, jobAlias, userIdentity);
         newState.setModelAlias(modelAlias);
         try {
             workflowConfig.registerJob(newState);
@@ -86,14 +85,30 @@ public class HybridOrchestratorController {
         status.put("jobAlias", state.getJobAlias());
         status.put("repositoryId", state.getTargetRepositoryId());
         status.put("modelAlias", state.getModelAlias());
+        status.put("branch", state.getBranchName());
+        status.put("baseBranch", state.getBaseBranch());
+        status.put("commitSha", state.getCommitSha());
+        status.put("pullRequestNumber", state.getPullRequestNumber());
+        status.put("pullRequestUrl", state.getPullRequestUrl());
         status.put("specsDetectedInStorage", state.isSpecsAvailableInStorage());
-        status.put("localRepositoryFileCount", state.getEstimatedRepoSizeFiles());
+        status.put("repositoryFileCount", state.getEstimatedRepoSizeFiles());
         status.put("executionMode", Objects.toString(state.getExecutionMode(), "UNSET"));
         status.put("status", Objects.toString(state.getTaskStatus(), "UNKNOWN"));
         status.put("compilerLogs", Objects.toString(state.getCompilerLogs(), ""));
         status.put("retryCount", state.getRetryCount());
         status.put("patchContent", Objects.toString(state.getGeneratedCodePatch(), ""));
+        status.put("reliabilityMetrics", state.getReliabilityMetrics());
+        status.put("auditTrail", state.getAuditTrail());
         return ResponseEntity.ok(status);
+    }
+
+    @GetMapping("/metrics")
+    public ResponseEntity<Map<String, Object>> getReliabilityMetrics(
+            @RequestHeader("X-User-Identity") String userIdentity) {
+        if (!isValidIdentity(userIdentity)) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.ok(workflowConfig.getReliabilityMetrics());
     }
 
     @PostMapping("/jobs/{jobAlias}/select-mode")
@@ -121,8 +136,36 @@ public class HybridOrchestratorController {
         workflowConfig.resumeExecutionTrack(jobAlias, mode);
         return ResponseEntity.accepted().body(Map.of(
                 "jobAlias", jobAlias,
-            "status", "RUNNING",
-            "modelAlias", state.getModelAlias()
+                "status", "RUNNING",
+                "modelAlias", state.getModelAlias()
+        ));
+    }
+
+    @PostMapping("/jobs/{jobAlias}/pull-request")
+    public ResponseEntity<Map<String, Object>> decidePullRequest(
+            @PathVariable String jobAlias,
+            @RequestHeader("X-User-Identity") String userIdentity,
+            @RequestBody(required = false) Map<String, Boolean> payload) {
+
+        SdlcState state = workflowConfig.getJobState(jobAlias);
+        if (!isOwnedBy(state, userIdentity)) {
+            return ResponseEntity.notFound().build();
+        }
+        if (payload == null || payload.get("approved") == null) {
+            return error(HttpStatus.BAD_REQUEST, "Approval decision is required.");
+        }
+        if (!"AWAITING_APPROVAL".equals(state.getTaskStatus())) {
+            return error(HttpStatus.CONFLICT, "Job is not waiting for pull request approval.");
+        }
+
+        boolean approved = payload.get("approved");
+        workflowConfig.decidePullRequest(jobAlias, approved);
+        if (!approved) {
+            return ResponseEntity.ok(Map.of("jobAlias", jobAlias, "status", "REJECTED"));
+        }
+        return ResponseEntity.accepted().body(Map.of(
+                "jobAlias", jobAlias,
+                "status", "CREATING_PULL_REQUEST"
         ));
     }
 
@@ -131,13 +174,6 @@ public class HybridOrchestratorController {
                 && !userIdentity.isBlank()
                 && userIdentity.length() <= 254
                 && userIdentity.chars().noneMatch(Character::isISOControl);
-    }
-
-    private static boolean isValidToken(String token) {
-        return token != null
-                && !token.isBlank()
-                && token.length() <= 8192
-                && token.chars().noneMatch(Character::isWhitespace);
     }
 
     private static boolean isValidRepositoryId(String repositoryId) {
