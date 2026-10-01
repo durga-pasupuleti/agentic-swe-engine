@@ -1,4 +1,4 @@
-package com.example.sdlc;
+package com.swe.sdlc;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

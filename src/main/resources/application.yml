@@ -3,15 +3,27 @@ server:
 
 sdlc:
   ollama:
-    base-url: "http://sdlc-ollama-engine:11434"
-    model-name: "qwen2.5-coder:7b"
-  mcp:  
+    models:
+      code: ${SDLC_OLLAMA_MODEL_CODE:qwen2.5-coder:7b}
+      fast: ${SDLC_OLLAMA_MODEL_FAST:llama3.2}
+  mcp:
     servers:
       git-mcp:
         command: "node"
-        script-path: "/opt/mcp-servers/git-mcp-server.js" /**adding git mcp server configuration */
+        script-path: "/opt/mcp-servers/git-mcp-server.js"
+
+spring:
+  ai:
+    ollama:
+      base-url: ${SDLC_OLLAMA_BASE_URL:http://sdlc-ollama-engine:11434}
+      init:
+        pull-model-strategy: never
+      chat:
+        options:
+          model: ${SDLC_OLLAMA_MODEL_CODE:qwen2.5-coder:7b}
+          temperature: 0.2
 
 logging:
   level:
-    com.example.sdlc: DEBUG
+    com.swe.sdlc: DEBUG
     org.springframework.web: INFO

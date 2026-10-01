@@ -1,4 +1,4 @@
-package com.example.sdlc.model;
+package com.swe.sdlc.model;
 /**
  * Represents the state of an SDLC (Software Development Life Cycle) job.
  * Contains information about the job's requirements, repository, execution status, and other metadata.
@@ -11,6 +11,7 @@ public class SdlcState {
     private final String userIdentity;
     private final String vcsToken;
 
+    private String modelAlias = "code";
     private String executionMode = "UNSET";
     private String localWorkspacePath = "";
     private String compilerLogs = "";
@@ -46,6 +47,14 @@ public class SdlcState {
 
     public String getVcsToken() {
         return vcsToken;
+    }
+
+    public String getModelAlias() {
+        return modelAlias;
+    }
+
+    public void setModelAlias(String modelAlias) {
+        this.modelAlias = modelAlias;
     }
 
     public String getExecutionMode() {
