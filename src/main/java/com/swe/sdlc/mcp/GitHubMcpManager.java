@@ -18,7 +18,7 @@ import java.util.Set;
 @Service
 public class GitHubMcpManager {
     private static final Set<String> TOOLS = Set.of(
-            "create_branch", "get_repository_tree", "get_file_contents", "push_files", "actions_list",
+            "create_branch", "get_repository_tree", "get_file_contents", "search_repositories", "push_files", "actions_list",
             "create_pull_request", "delete_file");
     private static final int MAX_FILES = 12;
     private static final int MAX_CONTEXT_CHARS = 80_000;
@@ -37,8 +37,7 @@ public class GitHubMcpManager {
     }
 
     public RepositoryContext loadContext(String owner, String repo, String branch, String requirement) {
-        JsonNode defaultTree = json(call("get_repository_tree", Map.of("owner", owner, "repo", repo, "recursive", true)));
-        String baseBranch = defaultTree.path("tree_sha").asText();
+        String baseBranch = findDefaultBranch(owner, repo);
         if (baseBranch.isBlank()) {
             throw new GitHubMcpException("GitHub MCP did not report the repository default branch");
         }
@@ -49,10 +48,15 @@ public class GitHubMcpManager {
             throw new GitHubMcpException("GitHub MCP returned an invalid repository tree");
         }
         List<JsonNode> files = new ArrayList<>();
+        Set<String> trackedPaths = new HashSet<>();
         boolean specs = false;
         for (JsonNode entry : tree) {
             String path = entry.path("path").asText();
-            if (!"blob".equals(entry.path("type").asText()) || isSensitive(path)) {
+            if (!"blob".equals(entry.path("type").asText())) {
+                continue;
+            }
+            trackedPaths.add(path);
+            if (isSensitive(path)) {
                 continue;
             }
             specs |= path.matches("(?i).*(^|/)(specs?|requirements?)(/|\\.|$).*");
@@ -83,7 +87,7 @@ public class GitHubMcpManager {
             context.append("No suitable source files exist yet; treat this as a greenfield repository.\n");
         }
         return new RepositoryContext(baseBranch, treeResponse.path("count").asLong(tree.size()), specs,
-                context.toString(), Map.copyOf(originalFiles));
+            context.toString(), Map.copyOf(originalFiles), Set.copyOf(trackedPaths));
     }
 
     public String pushChanges(String owner, String repo, String branch, List<Map<String, String>> changes,
@@ -176,6 +180,22 @@ public class GitHubMcpManager {
         throw new GitHubMcpException("GitHub MCP did not return file contents for " + path);
     }
 
+    private String findDefaultBranch(String owner, String repo) {
+        JsonNode response = json(call("search_repositories", Map.of(
+                "query", repo + " in:name user:" + owner,
+                "perPage", 100)));
+        JsonNode repositories = response.path("items");
+        String expectedName = owner + "/" + repo;
+        if (repositories.isArray()) {
+            for (JsonNode repository : repositories) {
+                if (expectedName.equalsIgnoreCase(repository.path("full_name").asText())) {
+                    return repository.path("default_branch").asText();
+                }
+            }
+        }
+        throw new GitHubMcpException("GitHub MCP could not resolve the repository default branch");
+    }
+
     private McpSchema.CallToolResult call(String name, Map<String, Object> arguments) {
         if (!TOOLS.contains(name) || clients.size() != 1) {
             throw new GitHubMcpException("GitHub MCP client is unavailable or tool is not allowed");
@@ -229,7 +249,7 @@ public class GitHubMcpManager {
     }
 
     private static boolean isSource(String path) {
-        return path.matches("(?i).*(\\.java|\\.kt|\\.py|\\.ts|\\.tsx|\\.js|\\.jsx|\\.go|\\.rs|\\.cs|\\.xml|\\.yml|\\.yaml|\\.json|\\.md)$");
+        return path.matches("(?i).*(\\.java|\\.kt|\\.py|\\.ts|\\.tsx|\\.js|\\.jsx|\\.go|\\.rs|\\.cs|\\.xml|\\.yml|\\.yaml|\\.json|\\.md|\\.gradle|\\.kts|\\.properties|\\.sql|\\.toml)$");
     }
 
     private static boolean isSensitive(String path) {
@@ -241,8 +261,23 @@ public class GitHubMcpManager {
 
     private static int score(String path, List<String> terms) {
         String normalized = path.toLowerCase(Locale.ROOT);
-        return terms.stream().filter(term -> term.length() > 2 && normalized.contains(term))
+        int relevance = terms.stream().filter(term -> term.length() > 2 && normalized.contains(term))
                 .mapToInt(String::length).sum();
+        String filename = normalized.substring(normalized.lastIndexOf('/') + 1);
+        if (filename.equals("readme.md")) {
+            relevance += 100;
+        } else if (Set.of("pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle",
+                "settings.gradle.kts", "package.json", "pyproject.toml", "go.mod", "cargo.toml")
+                .contains(filename)) {
+            relevance += 80;
+        } else if (filename.contains("openapi") || filename.contains("schema") || filename.contains("spec")) {
+            relevance += 70;
+        } else if (normalized.contains("/src/test/") || normalized.contains("/tests/")) {
+            relevance += 30;
+        } else if (normalized.contains("/src/main/") || normalized.contains("/app/")) {
+            relevance += 20;
+        }
+        return relevance;
     }
 
     private static String redact(String content) {
@@ -260,8 +295,8 @@ public class GitHubMcpManager {
         }
     }
 
-        public record RepositoryContext(String baseBranch, long estimatedRepoSizeFiles, boolean specsAvailableInStorage,
-            String text, Map<String, String> originalFiles) {
+    public record RepositoryContext(String baseBranch, long estimatedRepoSizeFiles, boolean specsAvailableInStorage,
+            String text, Map<String, String> originalFiles, Set<String> trackedPaths) {
     }
 
     public record Verification(boolean passed, boolean pending, String message) {

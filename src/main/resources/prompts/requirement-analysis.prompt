@@ -1,0 +1,7 @@
+Normalize the supplied software requirement for engineering execution. Return only a JSON object with fields normalizedProblem (string), acceptanceCriteria (string array), ambiguities (string array), assumptions (string array), and risks (string array). Do not silently resolve ambiguities; use empty arrays only when none exist. Separate stated facts from assumptions.
+
+Requirement:
+{{requirement}}
+
+Repository context:
+{{repositoryContext}}

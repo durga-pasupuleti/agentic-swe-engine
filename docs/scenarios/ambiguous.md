@@ -6,8 +6,8 @@
 
 ## Controlled Handling
 
-The requirement-analysis stage lists ambiguity, assumptions, and candidate interpretations; architecture and task decomposition preserve that decision context. The entry gate exposes the analysis before execution mode selection. The human should not select a mode until the intended safety meaning is clear. Refine the requirement and submit a new job if the analysis does not match intent.
+The requirement-analysis stage returns structured ambiguities, assumptions, acceptance criteria, and risks. The job pauses at `PAUSED_AT_REQUIREMENT_REVIEW` before implementation. The owner can submit clarified wording, which re-runs analysis, or explicitly acknowledge listed ambiguities when approving the plan. Only after plan approval can the owner choose execution mode.
 
 ## Validation
 
-The model is instructed not to invent policy requirements. Output remains on a feature branch, Actions validates the exact commit, and PR creation remains separately approval-gated. Ambiguity is visible in analysis/audit output rather than silently treated as a specification.
+The model is instructed not to invent policy requirements. Output remains on a feature branch, Actions validates the exact commit, and PR creation remains separately approval-gated. Clarification/acceptance is recorded in the actor-attributed audit trail; ambiguity is not silently treated as a specification.

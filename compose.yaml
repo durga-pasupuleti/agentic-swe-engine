@@ -1,4 +1,22 @@
 services:
+  sdlc-prompts-db:
+    image: postgres:17-alpine
+    container_name: sdlc-prompts-db
+    environment:
+      POSTGRES_DB: agentic_prompts
+      POSTGRES_USER: sdlc_prompts
+      POSTGRES_PASSWORD: ${SDLC_PROMPT_DATABASE_PASSWORD:-local-development-only}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - prompt-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sdlc_prompts -d agentic_prompts"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   sdlc-ollama-engine:
     image: ollama/ollama:latest
     container_name: sdlc-ollama-engine
@@ -10,3 +28,4 @@ services:
 
 volumes:
   ollama-models:
+  prompt-data:

@@ -19,14 +19,17 @@ class SdlcWorkflowGraphTest {
                 SdlcWorkflowGraph.Stage.IMPLEMENTATION,
                 SdlcWorkflowGraph.Stage.TESTS,
                 SdlcWorkflowGraph.Stage.DOCUMENTATION), Set.copyOf(layers.get(3)));
-        assertEquals(Set.of(SdlcWorkflowGraph.Stage.VALIDATION), Set.copyOf(layers.get(4)));
-        assertEquals(Set.of(SdlcWorkflowGraph.Stage.HUMAN_APPROVAL), Set.copyOf(layers.get(5)));
-        assertEquals(Set.of(SdlcWorkflowGraph.Stage.RELEASE_READY), Set.copyOf(layers.get(6)));
+        assertEquals(Set.of(SdlcWorkflowGraph.Stage.SYNCHRONIZATION), Set.copyOf(layers.get(4)));
+        assertEquals(Set.of(SdlcWorkflowGraph.Stage.VALIDATION), Set.copyOf(layers.get(5)));
+        assertEquals(Set.of(SdlcWorkflowGraph.Stage.HUMAN_APPROVAL), Set.copyOf(layers.get(6)));
+        assertEquals(Set.of(SdlcWorkflowGraph.Stage.RELEASE_READY), Set.copyOf(layers.get(7)));
 
         var dependencies = new SdlcWorkflowGraph().dependencies();
-        assertTrue(dependencies.get(SdlcWorkflowGraph.Stage.VALIDATION)
+        assertTrue(dependencies.get(SdlcWorkflowGraph.Stage.SYNCHRONIZATION)
                 .containsAll(Set.of(SdlcWorkflowGraph.Stage.IMPLEMENTATION,
                         SdlcWorkflowGraph.Stage.TESTS,
                         SdlcWorkflowGraph.Stage.DOCUMENTATION)));
+        assertEquals(Set.of(SdlcWorkflowGraph.Stage.SYNCHRONIZATION),
+                dependencies.get(SdlcWorkflowGraph.Stage.VALIDATION));
     }
 }

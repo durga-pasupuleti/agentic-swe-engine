@@ -15,6 +15,7 @@ public class SdlcWorkflowGraph {
         IMPLEMENTATION,
         TESTS,
         DOCUMENTATION,
+        SYNCHRONIZATION,
         VALIDATION,
         HUMAN_APPROVAL,
         RELEASE_READY
@@ -53,7 +54,8 @@ public class SdlcWorkflowGraph {
         graph.put(Stage.IMPLEMENTATION, Set.of(Stage.TASK_DECOMPOSITION));
         graph.put(Stage.TESTS, Set.of(Stage.TASK_DECOMPOSITION));
         graph.put(Stage.DOCUMENTATION, Set.of(Stage.TASK_DECOMPOSITION));
-        graph.put(Stage.VALIDATION, Set.of(Stage.IMPLEMENTATION, Stage.TESTS, Stage.DOCUMENTATION));
+        graph.put(Stage.SYNCHRONIZATION, Set.of(Stage.IMPLEMENTATION, Stage.TESTS, Stage.DOCUMENTATION));
+        graph.put(Stage.VALIDATION, Set.of(Stage.SYNCHRONIZATION));
         graph.put(Stage.HUMAN_APPROVAL, Set.of(Stage.VALIDATION));
         graph.put(Stage.RELEASE_READY, Set.of(Stage.HUMAN_APPROVAL));
         return Map.copyOf(graph);

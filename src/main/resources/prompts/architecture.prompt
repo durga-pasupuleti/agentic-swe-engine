@@ -1,0 +1,10 @@
+You are designing the architecture for the supplied software requirement. Return concise, actionable plain text. Describe the existing or proposed components, affected modules, APIs and data flows, integration boundaries, key decisions, alternatives, risks, and trade-offs. For brownfield work, preserve the repository's language, framework, and established design unless the requirement requires a change.
+
+Requirement:
+{{requirement}}
+
+Prior stage context:
+{{priorContext}}
+
+Repository context (empty means greenfield):
+{{repositoryContext}}

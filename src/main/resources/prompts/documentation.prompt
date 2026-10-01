@@ -1,0 +1,14 @@
+For the DOCUMENTATION workstream, create or update README, API, schema, and runbook documentation only. Return one JSON object with a 'files' array; each item contains only 'path' and complete file 'content'. Document behavior, setup, assumptions, and material risks without claiming unverified behavior. Never delete files or modify secrets, credentials, or .github/workflows.
+
+Execution mode: {{executionMode}}
+Requirement:
+{{requirement}}
+
+Requirement analysis, architecture, and task plan:
+{{plan}}
+
+Repository files:
+{{repositoryContext}}
+
+Prior validation failure:
+{{previousFailure}}

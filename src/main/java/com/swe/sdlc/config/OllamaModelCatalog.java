@@ -36,4 +36,18 @@ public class OllamaModelCatalog {
         }
         return model;
     }
+
+    public String fallbackAlias(String preferredAlias) {
+        if (models.containsKey("fast") && !"fast".equals(preferredAlias)) {
+            return "fast";
+        }
+        if (models.containsKey("code") && !"code".equals(preferredAlias)) {
+            return "code";
+        }
+        return models.keySet().stream()
+                .filter(alias -> !alias.equals(preferredAlias))
+                .sorted()
+                .findFirst()
+                .orElse(null);
+    }
 }

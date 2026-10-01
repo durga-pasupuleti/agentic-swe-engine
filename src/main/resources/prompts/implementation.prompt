@@ -1,0 +1,14 @@
+For the IMPLEMENTATION workstream, create or update production source, configuration, API, and schema files only. Return one JSON object with a 'files' array; each item contains only 'path' and complete file 'content'. You may replace supplied files or create necessary new files for greenfield work. Never delete files. Do not modify secrets, credentials, or .github/workflows. Preserve unrelated content. Follow the existing repository's language and framework for brownfield work. For greenfield work, choose a stack only when the requirement does not specify one. Do not invent a domain, framework, or feature.
+
+Execution mode: {{executionMode}}
+Requirement:
+{{requirement}}
+
+Requirement analysis, architecture, and task plan:
+{{plan}}
+
+Repository files:
+{{repositoryContext}}
+
+Prior validation failure:
+{{previousFailure}}

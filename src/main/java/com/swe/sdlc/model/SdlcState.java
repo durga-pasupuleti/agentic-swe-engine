@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 /**
  * Represents the state of an SDLC (Software Development Life Cycle) job.
  * Contains information about the job's requirements, repository, execution status, and other metadata.
@@ -13,19 +14,27 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 public class SdlcState {
     private final String rawRequirement;
+    private volatile String clarifiedRequirement;
     private final String targetRepositoryId;
     private final String jobAlias;
     private final String userIdentity;
     private final Instant createdAt = Instant.now();
     private final long createdAtNanos = System.nanoTime();
     private volatile long firstFailureAtNanos;
+    private volatile long recoveredAtNanos;
     private volatile long finishedAtNanos;
     private final List<AuditEvent> auditTrail = new CopyOnWriteArrayList<>();
+    private volatile Consumer<AuditEvent> auditSink = event -> { };
     private final Map<String, Long> stageStartedAt = new ConcurrentHashMap<>();
     private final Map<String, Long> stageDurationsMillis = new ConcurrentHashMap<>();
 
     private volatile String modelAlias = "code";
     private volatile String requirementAnalysis = "";
+    private volatile String normalizedRequirement = "";
+    private volatile List<String> acceptanceCriteria = List.of();
+    private volatile List<String> ambiguities = List.of();
+    private volatile List<String> assumptions = List.of();
+    private volatile List<String> identifiedRisks = List.of();
     private volatile String architecturePlan = "";
     private volatile String taskDecomposition = "";
     private volatile String executionMode = "UNSET";
@@ -35,12 +44,15 @@ public class SdlcState {
     private volatile String pullRequestUrl = "";
     private volatile long pullRequestNumber;
     private volatile String compilerLogs = "";
+    private volatile String engineeringSummary = "";
     private volatile int retryCount;
     private volatile String generatedCodePatch = "";
     private volatile String taskStatus = "INITIALIZED";
     private volatile boolean specsAvailableInStorage;
     private volatile long estimatedRepoSizeFiles;
     private volatile int rollbackCount;
+    private volatile List<String> changedPaths = List.of();
+    private volatile List<String> repositoryContextFiles = List.of();
 
     public SdlcState(String requirement, String repoId, String alias, String user) {
         this.rawRequirement = requirement;
@@ -51,6 +63,14 @@ public class SdlcState {
 
     public String getRawRequirement() {
         return rawRequirement;
+    }
+
+    public String getEffectiveRequirement() {
+        return clarifiedRequirement == null ? rawRequirement : clarifiedRequirement;
+    }
+
+    public void setClarifiedRequirement(String clarifiedRequirement) {
+        this.clarifiedRequirement = clarifiedRequirement;
     }
 
     public String getTargetRepositoryId() {
@@ -79,6 +99,46 @@ public class SdlcState {
 
     public void setRequirementAnalysis(String requirementAnalysis) {
         this.requirementAnalysis = requirementAnalysis;
+    }
+
+    public String getNormalizedRequirement() {
+        return normalizedRequirement;
+    }
+
+    public void setNormalizedRequirement(String normalizedRequirement) {
+        this.normalizedRequirement = normalizedRequirement;
+    }
+
+    public List<String> getAcceptanceCriteria() {
+        return acceptanceCriteria;
+    }
+
+    public void setAcceptanceCriteria(List<String> acceptanceCriteria) {
+        this.acceptanceCriteria = List.copyOf(acceptanceCriteria);
+    }
+
+    public List<String> getAmbiguities() {
+        return ambiguities;
+    }
+
+    public void setAmbiguities(List<String> ambiguities) {
+        this.ambiguities = List.copyOf(ambiguities);
+    }
+
+    public List<String> getAssumptions() {
+        return assumptions;
+    }
+
+    public void setAssumptions(List<String> assumptions) {
+        this.assumptions = List.copyOf(assumptions);
+    }
+
+    public List<String> getIdentifiedRisks() {
+        return identifiedRisks;
+    }
+
+    public void setIdentifiedRisks(List<String> identifiedRisks) {
+        this.identifiedRisks = List.copyOf(identifiedRisks);
     }
 
     public String getArchitecturePlan() {
@@ -149,6 +209,14 @@ public class SdlcState {
         return compilerLogs;
     }
 
+    public String getEngineeringSummary() {
+        return engineeringSummary;
+    }
+
+    public void setEngineeringSummary(String engineeringSummary) {
+        this.engineeringSummary = engineeringSummary;
+    }
+
     public void setCompilerLogs(String compilerLogs) {
         this.compilerLogs = compilerLogs;
     }
@@ -177,6 +245,28 @@ public class SdlcState {
         recordEvent("VALIDATION", "ATTEMPT_FAILED", summary);
     }
 
+    public void recordRecovery() {
+        if (firstFailureAtNanos != 0 && recoveredAtNanos == 0) {
+            recoveredAtNanos = System.nanoTime();
+        }
+    }
+
+    public List<String> getChangedPaths() {
+        return changedPaths;
+    }
+
+    public void setChangedPaths(List<String> changedPaths) {
+        this.changedPaths = List.copyOf(changedPaths);
+    }
+
+    public List<String> getRepositoryContextFiles() {
+        return repositoryContextFiles;
+    }
+
+    public void setRepositoryContextFiles(List<String> repositoryContextFiles) {
+        this.repositoryContextFiles = List.copyOf(repositoryContextFiles);
+    }
+
     public void beginStage(String stage) {
         stageStartedAt.put(stage, System.nanoTime());
         recordEvent(stage, "STARTED", "Stage started");
@@ -191,11 +281,20 @@ public class SdlcState {
     }
 
     public void recordDecision(String decision, String summary) {
-        recordEvent("GOVERNANCE", decision, summary);
+        appendAuditEvent(new AuditEvent(Instant.now(), userIdentity, "GOVERNANCE", decision, summary));
     }
 
     public void recordEvent(String stage, String event, String summary) {
-        auditTrail.add(new AuditEvent(Instant.now(), stage, event, summary));
+        appendAuditEvent(new AuditEvent(Instant.now(), "system", stage, event, summary));
+    }
+
+    public void setAuditSink(Consumer<AuditEvent> auditSink) {
+        this.auditSink = auditSink == null ? event -> { } : auditSink;
+    }
+
+    private void appendAuditEvent(AuditEvent event) {
+        auditSink.accept(event);
+        auditTrail.add(event);
     }
 
     public List<AuditEvent> getAuditTrail() {
@@ -204,8 +303,9 @@ public class SdlcState {
 
     public Map<String, Object> getReliabilityMetrics() {
         long endNanos = finishedAtNanos == 0 ? System.nanoTime() : finishedAtNanos;
-        long recoveryMillis = firstFailureAtNanos == 0 || finishedAtNanos == 0 || finishedAtNanos < firstFailureAtNanos
-                ? 0 : (finishedAtNanos - firstFailureAtNanos) / 1_000_000L;
+        long recoveryMillis = firstFailureAtNanos == 0 || recoveredAtNanos == 0
+            || recoveredAtNanos < firstFailureAtNanos
+            ? 0 : (recoveredAtNanos - firstFailureAtNanos) / 1_000_000L;
         return Map.of(
                 "elapsedMillis", (System.nanoTime() - createdAtNanos) / 1_000_000L,
                 "endToEndLatencyMillis", (endNanos - createdAtNanos) / 1_000_000L,
@@ -222,10 +322,10 @@ public class SdlcState {
     }
 
     public long getTimeToRecoveryMillis() {
-        if (firstFailureAtNanos == 0 || finishedAtNanos == 0 || finishedAtNanos < firstFailureAtNanos) {
+        if (firstFailureAtNanos == 0 || recoveredAtNanos == 0 || recoveredAtNanos < firstFailureAtNanos) {
             return 0;
         }
-        return (finishedAtNanos - firstFailureAtNanos) / 1_000_000L;
+        return (recoveredAtNanos - firstFailureAtNanos) / 1_000_000L;
     }
 
     public Instant getCreatedAt() {
@@ -276,6 +376,6 @@ public class SdlcState {
         this.estimatedRepoSizeFiles = estimatedRepoSizeFiles;
     }
 
-    public record AuditEvent(Instant timestamp, String stage, String event, String summary) {
+    public record AuditEvent(Instant timestamp, String actor, String stage, String event, String summary) {
     }
 }

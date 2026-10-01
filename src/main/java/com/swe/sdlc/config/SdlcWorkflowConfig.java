@@ -8,6 +8,7 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
@@ -138,24 +139,20 @@ public class SdlcWorkflowConfig {
             GitHubMcpManager.RepositoryContext discovery = githubMcpManager.loadContext(
                 repositoryParts[0], repositoryParts[1], branchName, state.getRawRequirement());
             repositoryContexts.put(state.getJobAlias(), discovery);
+            List<String> contextFiles = discovery.originalFiles().keySet().stream().sorted().toList();
+            state.setRepositoryContextFiles(contextFiles);
+            state.recordEvent("REPOSITORY_DISCOVERY", "CONTEXT_SELECTED", String.join(", ", contextFiles));
             state.setBaseBranch(discovery.baseBranch());
             state.setEstimatedRepoSizeFiles(discovery.estimatedRepoSizeFiles());
             state.setSpecsAvailableInStorage(discovery.specsAvailableInStorage());
 
-            String analysis = runBriefStage(state, Stage.REQUIREMENT_ANALYSIS,
-                    state.getRawRequirement(), discovery.text(), "");
-            String architecture = runBriefStage(state, Stage.ARCHITECTURE,
-                    state.getRawRequirement(), discovery.text(), analysis);
-                String decomposition = runBriefStage(state, Stage.TASK_DECOMPOSITION,
-                    state.getRawRequirement(), discovery.text(), analysis + "\n\n" + architecture);
-                workflowPlans.put(state.getJobAlias(), new WorkflowPlan(analysis, architecture, decomposition));
-                state.setRequirementAnalysis(analysis);
-                state.setArchitecturePlan(architecture);
-                state.setTaskDecomposition(decomposition);
-                state.setCompilerLogs(analysis + "\n\n" + architecture + "\n\n" + decomposition);
+                WorkflowPlan plan = generateWorkflowPlan(state, discovery);
+                saveWorkflowPlan(state, plan);
             state.completeStage("REPOSITORY_DISCOVERY", "branch=" + branchName
                     + "; tracked-files=" + discovery.estimatedRepoSizeFiles());
-            state.setTaskStatus("PAUSED_AT_ENTRY_GATE");
+                state.setTaskStatus("PAUSED_AT_REQUIREMENT_REVIEW");
+                state.recordDecision("REQUIREMENT_REVIEW_REQUIRED",
+                    "Execution is blocked until the owner reviews the plan");
         } catch (RuntimeException exception) {
             fail(state, safeMessage(exception));
         }
@@ -169,9 +166,10 @@ public class SdlcWorkflowConfig {
             return;
         }
         String[] repositoryParts = state.getTargetRepositoryId().split("/", 2);
-        String previousFailure = null;
+        String previousFailure = state.getRetryCount() == 0 ? null : state.getCompilerLogs();
+        int firstAttempt = state.getRetryCount() + 1;
         state.recordEvent("WORKFLOW_GRAPH", "SCHEDULED", workflowGraph.executionLayers().toString());
-        for (int attempt = 1; attempt <= MAX_PATCH_ATTEMPTS; attempt++) {
+        for (int attempt = firstAttempt; attempt <= MAX_PATCH_ATTEMPTS; attempt++) {
             state.setRetryCount(attempt - 1);
             state.setTaskStatus(attempt == 1 ? "GENERATING_PATCH" : "RETRYING");
             boolean changesPushed = false;
@@ -179,10 +177,10 @@ public class SdlcWorkflowConfig {
             try {
             if (attempt > 1) {
                 String revisedArchitecture = runBriefStage(state, Stage.ARCHITECTURE,
-                    state.getRawRequirement(), repositoryContext.text(),
+                    state.getEffectiveRequirement(), repositoryContext.text(),
                     plan.analysis() + "\nPrior validation failure:\n" + previousFailure);
                 String revisedTasks = runBriefStage(state, Stage.TASK_DECOMPOSITION,
-                    state.getRawRequirement(), repositoryContext.text(),
+                    state.getEffectiveRequirement(), repositoryContext.text(),
                     plan.analysis() + "\n\n" + revisedArchitecture + "\nPrior validation failure:\n"
                         + previousFailure);
                 plan = new WorkflowPlan(plan.analysis(), revisedArchitecture, revisedTasks);
@@ -193,21 +191,24 @@ public class SdlcWorkflowConfig {
             }
 
             Map<Stage, CompletableFuture<OllamaModelService.FileChangeSet>> parallelStages = new EnumMap<>(Stage.class);
-            for (Stage stage : List.of(Stage.IMPLEMENTATION, Stage.TESTS, Stage.DOCUMENTATION)) {
+            for (Stage stage : parallelWorkstreamStages()) {
                 parallelStages.put(stage, generateWorkstreamAsync(
                     state, stage, repositoryContext.text(), plan, mode, previousFailure));
             }
             CompletableFuture.allOf(parallelStages.values().toArray(CompletableFuture[]::new)).join();
+            state.beginStage(Stage.SYNCHRONIZATION.name());
             List<OllamaModelService.FileChange> generatedFiles = parallelStages.values().stream()
                 .map(CompletableFuture::join)
                 .flatMap(result -> result.files().stream())
                 .toList();
-            List<OllamaModelService.FileChange> mergedFiles = mergeChanges(generatedFiles);
+            List<OllamaModelService.FileChange> mergedFiles = ChangeSetPolicy.merge(generatedFiles);
+            ChangeSetPolicy.validateRepositoryPaths(mergedFiles, repositoryContext);
             List<Map<String, String>> files = mergedFiles.stream()
                 .map(change -> Map.of("path", change.path(), "content", change.content()))
                 .toList();
             changedPaths = mergedFiles.stream().map(OllamaModelService.FileChange::path).toList();
-            state.completeStage(Stage.VALIDATION.name(), "parallel outputs synchronized; files=" + files.size()
+            state.setChangedPaths(changedPaths);
+            state.completeStage(Stage.SYNCHRONIZATION.name(), "parallel outputs synchronized; files=" + files.size()
                 + "; sha256=" + hashChanges(mergedFiles));
 
                 String commitSha = githubMcpManager.pushChanges(repositoryParts[0], repositoryParts[1],
@@ -228,9 +229,11 @@ public class SdlcWorkflowConfig {
                     throw new IllegalStateException(verification.message());
                 }
                 state.completeStage(Stage.VALIDATION.name(), verification.message());
+                state.recordRecovery();
                 state.setRetryCount(attempt - 1);
                 state.setCompilerLogs(verification.message() + " Awaiting owner approval to create a pull request.");
                 state.setTaskStatus("AWAITING_APPROVAL");
+                state.setEngineeringSummary(buildEngineeringSummary(state, "AWAITING_APPROVAL", verification.message()));
                 state.beginStage(Stage.HUMAN_APPROVAL.name());
                 state.recordDecision("APPROVAL_REQUIRED", "PR creation requires explicit owner approval");
                 return;
@@ -244,6 +247,7 @@ public class SdlcWorkflowConfig {
                                 repositoryContext.originalFiles(), changedPaths,
                                 "Restore original files after failed verification");
                         state.setCommitSha("");
+                        state.setChangedPaths(List.of());
                         state.recordRollback();
                     } catch (RuntimeException rollbackException) {
                         fail(state, "Attempt failed and restore commit failed: " + safeMessage(rollbackException));
@@ -254,15 +258,193 @@ public class SdlcWorkflowConfig {
         }
         state.setRetryCount(MAX_PATCH_ATTEMPTS);
         state.setTaskStatus("FAILED");
+        state.setEngineeringSummary(buildEngineeringSummary(state, "FAILED", previousFailure));
+    }
+
+    public void resumeVerification(String jobAlias) {
+        SdlcState state = requireJobState(jobAlias);
+        synchronized (state) {
+            if (!"VERIFICATION_PENDING".equals(state.getTaskStatus())) {
+                throw new IllegalStateException("Job is not waiting for Actions verification");
+            }
+            state.setTaskStatus("VERIFYING");
+        }
+        try {
+            workflowExecutor.execute(() -> {
+                try {
+                    String[] repositoryParts = state.getTargetRepositoryId().split("/", 2);
+                    GitHubMcpManager.Verification verification = githubMcpManager.verifyActions(
+                            repositoryParts[0], repositoryParts[1], state.getBranchName(), state.getCommitSha());
+                    if (verification.pending()) {
+                        state.setCompilerLogs(verification.message());
+                        state.setTaskStatus("VERIFICATION_PENDING");
+                        return;
+                    }
+                    if (!verification.passed()) {
+                        GitHubMcpManager.RepositoryContext repositoryContext = repositoryContexts.get(jobAlias);
+                        if (repositoryContext == null) {
+                            fail(state, "Repository context is unavailable for rollback");
+                            return;
+                        }
+                        try {
+                            githubMcpManager.rollback(repositoryParts[0], repositoryParts[1], state.getBranchName(),
+                                repositoryContext.originalFiles(), state.getChangedPaths(),
+                                "Restore files after failed Actions verification");
+                        } catch (RuntimeException rollbackException) {
+                            fail(state, "Actions failed and compensating restore failed: "
+                                + safeMessage(rollbackException));
+                            return;
+                        }
+                        state.recordRollback();
+                        state.recordFailureAttempt(verification.message());
+                        state.setCommitSha("");
+                        state.setChangedPaths(List.of());
+                        if (state.getRetryCount() >= MAX_PATCH_ATTEMPTS - 1) {
+                            state.setRetryCount(MAX_PATCH_ATTEMPTS);
+                            fail(state, verification.message());
+                            return;
+                        }
+                        state.setRetryCount(state.getRetryCount() + 1);
+                        state.setCompilerLogs(verification.message());
+                        executePatchWorkflow(state, state.getExecutionMode());
+                        return;
+                    }
+                    state.completeStage(Stage.VALIDATION.name(), verification.message());
+                    state.recordRecovery();
+                    state.setCompilerLogs(verification.message() + " Awaiting owner approval to create a pull request.");
+                    state.setTaskStatus("AWAITING_APPROVAL");
+                    state.setEngineeringSummary(buildEngineeringSummary(state, "AWAITING_APPROVAL", verification.message()));
+                    state.beginStage(Stage.HUMAN_APPROVAL.name());
+                    state.recordDecision("APPROVAL_REQUIRED", "PR creation requires explicit owner approval");
+                } catch (RuntimeException exception) {
+                    state.setCompilerLogs("Verification could not be resumed: " + safeMessage(exception));
+                    state.setTaskStatus("VERIFICATION_PENDING");
+                }
+            });
+        } catch (TaskRejectedException exception) {
+            state.setCompilerLogs("Workflow executor is at capacity; verification remains pending.");
+            state.setTaskStatus("VERIFICATION_PENDING");
+        }
     }
 
     private String runBriefStage(SdlcState state, Stage stage, String requirement,
             String repositoryContext, String priorContext) {
         state.beginStage(stage.name());
-        String brief = ollamaModelService.generateBrief(stage.name(), requirement, repositoryContext,
-                state.getModelAlias(), priorContext);
+        String brief = withModelFallback(state, stage.name(), alias -> ollamaModelService.generateBrief(
+            stage.name(), requirement, repositoryContext, alias, priorContext));
         state.completeStage(stage.name(), "brief-sha256=" + hashText(brief));
         return brief;
+    }
+
+        private WorkflowPlan generateWorkflowPlan(SdlcState state,
+            GitHubMcpManager.RepositoryContext repositoryContext) {
+            Map<Stage, String> briefs = new EnumMap<>(Stage.class);
+            for (List<Stage> layer : workflowGraph.executionLayers()) {
+                if (layer.contains(Stage.IMPLEMENTATION)) {
+                break;
+                }
+                for (Stage stage : layer) {
+                    if (stage == Stage.REQUIREMENT_ANALYSIS) {
+                        state.beginStage(stage.name());
+                        OllamaModelService.RequirementAnalysis understanding = withModelFallback(state, stage.name(),
+                            alias -> ollamaModelService.analyzeRequirement(
+                                state.getEffectiveRequirement(), repositoryContext.text(), alias));
+                        state.setNormalizedRequirement(understanding.normalizedProblem());
+                        state.setAcceptanceCriteria(understanding.acceptanceCriteria());
+                        state.setAmbiguities(understanding.ambiguities());
+                        state.setAssumptions(understanding.assumptions());
+                        state.setIdentifiedRisks(understanding.risks());
+                        briefs.put(stage, understanding.reviewText());
+                        state.completeStage(stage.name(), "ambiguities=" + understanding.ambiguities().size()
+                                + "; sha256=" + hashText(understanding.reviewText()));
+                        continue;
+                    }
+                String priorContext = switch (stage) {
+                    case ARCHITECTURE -> requireBrief(briefs, Stage.REQUIREMENT_ANALYSIS);
+                    case TASK_DECOMPOSITION -> requireBrief(briefs, Stage.REQUIREMENT_ANALYSIS)
+                        + "\n\n" + requireBrief(briefs, Stage.ARCHITECTURE);
+                    default -> throw new IllegalStateException("Unexpected planning stage: " + stage);
+                };
+                briefs.put(stage, runBriefStage(state, stage, state.getEffectiveRequirement(),
+                    repositoryContext.text(), priorContext));
+                }
+            }
+            return new WorkflowPlan(requireBrief(briefs, Stage.REQUIREMENT_ANALYSIS),
+                    requireBrief(briefs, Stage.ARCHITECTURE), requireBrief(briefs, Stage.TASK_DECOMPOSITION));
+        }
+
+        private static String requireBrief(Map<Stage, String> briefs, Stage stage) {
+            String brief = briefs.get(stage);
+            if (brief == null) {
+                throw new IllegalStateException("Workflow graph did not produce the " + stage + " brief");
+            }
+            return brief;
+        }
+
+            private List<Stage> parallelWorkstreamStages() {
+            return workflowGraph.executionLayers().stream()
+                .filter(layer -> layer.contains(Stage.IMPLEMENTATION))
+                .flatMap(List::stream)
+                .filter(stage -> List.of(Stage.IMPLEMENTATION, Stage.TESTS, Stage.DOCUMENTATION).contains(stage))
+                .toList();
+            }
+
+        private void saveWorkflowPlan(SdlcState state, WorkflowPlan plan) {
+        workflowPlans.put(state.getJobAlias(), plan);
+        state.setRequirementAnalysis(plan.analysis());
+        state.setArchitecturePlan(plan.architecture());
+        state.setTaskDecomposition(plan.decomposition());
+        state.setCompilerLogs("Requirement analysis:\n" + plan.analysis()
+            + "\n\nArchitecture:\n" + plan.architecture()
+            + "\n\nTask decomposition:\n" + plan.decomposition());
+        }
+
+        public void reviewRequirement(String jobAlias, String decision, String clarifiedRequirement,
+            boolean acceptAmbiguities) {
+        SdlcState state = requireJobState(jobAlias);
+        synchronized (state) {
+            if (!"PAUSED_AT_REQUIREMENT_REVIEW".equals(state.getTaskStatus())) {
+                throw new IllegalStateException("Job is not waiting for requirement review");
+            }
+            if ("APPROVE".equals(decision)) {
+                if (!state.getAmbiguities().isEmpty() && !acceptAmbiguities) {
+                    throw new IllegalStateException("Owner must explicitly acknowledge unresolved ambiguities");
+                }
+                String decisionType = state.getAmbiguities().isEmpty()
+                        ? "REQUIREMENT_APPROVED" : "AMBIGUITIES_ACCEPTED";
+                state.recordDecision(decisionType,
+                        "Owner approved the plan; unresolved ambiguities=" + state.getAmbiguities().size());
+                state.setTaskStatus("PAUSED_AT_ENTRY_GATE");
+                return;
+            }
+            if (!"CLARIFY".equals(decision) || clarifiedRequirement == null
+                    || clarifiedRequirement.isBlank()) {
+                throw new IllegalArgumentException("Choose APPROVE or provide clarified requirement text");
+            }
+            state.setClarifiedRequirement(clarifiedRequirement.strip());
+            state.recordDecision("REQUIREMENT_CLARIFIED", "Owner submitted revised requirement text");
+            state.setTaskStatus("REANALYZING_REQUIREMENT");
+        }
+
+        try {
+            workflowExecutor.execute(() -> {
+                try {
+                    GitHubMcpManager.RepositoryContext repositoryContext = repositoryContexts.get(jobAlias);
+                    if (repositoryContext == null) {
+                        throw new IllegalStateException("Repository context is unavailable for re-analysis");
+                    }
+                    WorkflowPlan revisedPlan = generateWorkflowPlan(state, repositoryContext);
+                    saveWorkflowPlan(state, revisedPlan);
+                    state.setTaskStatus("PAUSED_AT_REQUIREMENT_REVIEW");
+                    state.recordDecision("REQUIREMENT_REVIEW_REQUIRED",
+                            "Revised plan requires owner review before execution");
+                } catch (RuntimeException exception) {
+                    fail(state, safeMessage(exception));
+                }
+            });
+        } catch (TaskRejectedException exception) {
+            fail(state, "Workflow executor is at capacity; requirement re-analysis was not queued.");
+        }
     }
 
     private CompletableFuture<OllamaModelService.FileChangeSet> generateWorkstreamAsync(
@@ -271,10 +453,10 @@ public class SdlcWorkflowConfig {
         return CompletableFuture.supplyAsync(() -> {
             state.beginStage(stage.name());
             try {
-                OllamaModelService.FileChangeSet result = ollamaModelService.generateChanges(
-                        state.getRawRequirement(), repositoryContext, state.getModelAlias(), mode,
-                        stage.name(), plan.analysis() + "\n\n" + plan.architecture() + "\n\n"
-                            + plan.decomposition(), previousFailure);
+                OllamaModelService.FileChangeSet result = withModelFallback(state, stage.name(), alias ->
+                    ollamaModelService.generateChanges(state.getEffectiveRequirement(), repositoryContext,
+                        alias, mode, stage.name(), plan.analysis() + "\n\n" + plan.architecture() + "\n\n"
+                            + plan.decomposition(), previousFailure));
                 state.completeStage(stage.name(), "files=" + result.files().size()
                         + "; sha256=" + hashChanges(result.files()));
                 return result;
@@ -285,18 +467,23 @@ public class SdlcWorkflowConfig {
         }, workflowExecutor);
     }
 
-    private static List<OllamaModelService.FileChange> mergeChanges(List<OllamaModelService.FileChange> changes) {
-        Map<String, OllamaModelService.FileChange> merged = new LinkedHashMap<>();
-        for (OllamaModelService.FileChange change : changes) {
-            OllamaModelService.FileChange existing = merged.putIfAbsent(change.path(), change);
-            if (existing != null && !existing.content().equals(change.content())) {
-                throw new IllegalStateException("Parallel stages produced conflicting changes for " + change.path());
+    private <T> T withModelFallback(SdlcState state, String stage, Function<String, T> operation) {
+        String preferredAlias = state.getModelAlias();
+        try {
+            return operation.apply(preferredAlias);
+        } catch (RuntimeException primaryFailure) {
+            String fallbackAlias = modelCatalog.fallbackAlias(preferredAlias);
+            if (fallbackAlias == null) {
+                throw primaryFailure;
+            }
+            state.recordDecision("MODEL_FALLBACK", stage + " retried once with model alias " + fallbackAlias);
+            try {
+                return operation.apply(fallbackAlias);
+            } catch (RuntimeException fallbackFailure) {
+                fallbackFailure.addSuppressed(primaryFailure);
+                throw fallbackFailure;
             }
         }
-        if (merged.isEmpty() || merged.size() > 12) {
-            throw new IllegalStateException("Merged workflow output is empty or exceeds the file limit");
-        }
-        return List.copyOf(merged.values());
     }
 
     private static String hashText(String value) {
@@ -326,10 +513,13 @@ public class SdlcWorkflowConfig {
                 throw new IllegalStateException("Job is not waiting for pull request approval");
             }
             if (!approved) {
+                state.completeStage(Stage.HUMAN_APPROVAL.name(), "Owner rejected PR creation");
                 state.setTaskStatus("REJECTED");
                 state.setCompilerLogs("Pull request creation was rejected by the job owner.");
+                state.setEngineeringSummary(buildEngineeringSummary(state, "REJECTED", "No pull request was created."));
                 return;
             }
+            state.completeStage(Stage.HUMAN_APPROVAL.name(), "Owner approved PR creation");
             state.setTaskStatus("CREATING_PULL_REQUEST");
         }
 
@@ -351,7 +541,11 @@ public class SdlcWorkflowConfig {
                     state.setPullRequestNumber(pullRequest.number());
                     state.setPullRequestUrl(pullRequest.url());
                     state.setCompilerLogs("Pull request created after owner approval.");
+                    state.beginStage(Stage.RELEASE_READY.name());
+                    state.completeStage(Stage.RELEASE_READY.name(), "Pull request is ready for final review");
                     state.setTaskStatus("COMPLETED");
+                        state.setEngineeringSummary(buildEngineeringSummary(state, "COMPLETED",
+                            "Pull request: " + pullRequest.url()));
                 } catch (RuntimeException exception) {
                     fail(state, safeMessage(exception));
                 }
@@ -374,6 +568,22 @@ public class SdlcWorkflowConfig {
     private static void fail(SdlcState state, String message) {
         state.setCompilerLogs(message);
         state.setTaskStatus("FAILED");
+        state.setEngineeringSummary(buildEngineeringSummary(state, "FAILED", message));
+    }
+
+    private static String buildEngineeringSummary(SdlcState state, String outcome, String validation) {
+        return "Outcome: " + outcome
+                + "\n\nPlan and rationale:\nRequirement: " + state.getEffectiveRequirement()
+                + "\nAnalysis: " + state.getRequirementAnalysis()
+                + "\nArchitecture: " + state.getArchitecturePlan()
+                + "\nTasks: " + state.getTaskDecomposition()
+                + "\n\nArtifacts: " + String.join(", ", state.getChangedPaths())
+                + "\n\nValidation: " + validation
+                + "\n\nRisks and trade-offs: changes are restricted to context-reviewed files and new paths; "
+                + "execution is limited to an isolated feature branch; verification depends on repository Actions."
+                + "\nAssumptions: the GitHub App is installed on the target repository and CI runs for agentic branches."
+                + "\nLimitations: repository context is bounded to 12 selected files and 80,000 characters; "
+                + "job state is in memory and is lost when the engine restarts.";
     }
 
     private SdlcState requireJobState(String jobAlias) {

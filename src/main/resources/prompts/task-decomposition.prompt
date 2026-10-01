@@ -1,0 +1,10 @@
+Convert the requirement and architecture into ordered, actionable engineering tasks. Give each task a stable ID, title, dependencies, affected areas, and validation criteria. Identify tasks that can run in parallel. Do not omit testing, documentation, security, or release-readiness work where relevant.
+
+Requirement:
+{{requirement}}
+
+Prior stage context:
+{{priorContext}}
+
+Repository context:
+{{repositoryContext}}

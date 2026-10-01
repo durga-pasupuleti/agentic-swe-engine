@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class OllamaModelService {
@@ -18,11 +19,14 @@ public class OllamaModelService {
     private final ChatModel chatModel;
     private final OllamaModelCatalog modelCatalog;
     private final ObjectMapper objectMapper;
+    private final PromptTemplateStore promptTemplateStore;
 
-    public OllamaModelService(ChatModel chatModel, OllamaModelCatalog modelCatalog, ObjectMapper objectMapper) {
+    public OllamaModelService(ChatModel chatModel, OllamaModelCatalog modelCatalog, ObjectMapper objectMapper,
+            PromptTemplateStore promptTemplateStore) {
         this.chatModel = chatModel;
         this.modelCatalog = modelCatalog;
         this.objectMapper = objectMapper;
+        this.promptTemplateStore = promptTemplateStore;
     }
 
     public String generateBrief(
@@ -32,11 +36,15 @@ public class OllamaModelService {
             String modelAlias,
             String priorContext) {
         String modelName = modelCatalog.resolve(modelAlias);
-        String promptText = "You are performing the " + stage + " stage of an SDLC workflow. "
-                + "Return concise, actionable plain text. Identify ambiguity, assumptions, dependencies, and risks explicitly.\n"
-                + "Requirement:\n" + requirement + "\n\n"
-                + "Prior stage context:\n" + priorContext + "\n\n"
-                + "Repository context (empty means greenfield):\n" + repositoryContext;
+        String promptName = switch (stage) {
+            case "ARCHITECTURE" -> "architecture.prompt";
+            case "TASK_DECOMPOSITION" -> "task-decomposition.prompt";
+            default -> throw new IllegalArgumentException("Unsupported planning stage");
+        };
+        String promptText = promptTemplateStore.render(promptName, Map.of(
+                "requirement", requirement,
+                "priorContext", priorContext,
+                "repositoryContext", repositoryContext));
         ChatResponse response = chatModel.call(new Prompt(promptText,
                 OllamaChatOptions.builder().model(modelName).temperature(0.1).build()));
         String text = response == null || response.getResult() == null
@@ -48,6 +56,37 @@ public class OllamaModelService {
         return text;
     }
 
+    public RequirementAnalysis analyzeRequirement(String requirement, String repositoryContext, String modelAlias) {
+        String modelName = modelCatalog.resolve(modelAlias);
+        String promptText = promptTemplateStore.render("requirement-analysis.prompt", Map.of(
+            "requirement", requirement,
+            "repositoryContext", repositoryContext));
+        ChatResponse response = chatModel.call(new Prompt(promptText,
+                OllamaChatOptions.builder().model(modelName).temperature(0.1).format("json").build()));
+        String json = response == null || response.getResult() == null
+                || response.getResult().getOutput() == null
+                ? null : response.getResult().getOutput().getText();
+        if (json == null || json.isBlank() || json.length() > 40_000) {
+            throw new IllegalStateException("Model returned invalid structured requirement analysis");
+        }
+        try {
+            RequirementAnalysis analysis = objectMapper.readValue(json, RequirementAnalysis.class);
+            if (analysis == null || analysis.normalizedProblem() == null || analysis.normalizedProblem().isBlank()
+                    || !validItems(analysis.acceptanceCriteria()) || !validItems(analysis.ambiguities())
+                    || !validItems(analysis.assumptions()) || !validItems(analysis.risks())) {
+                throw new IllegalStateException("Structured requirement analysis is incomplete or oversized");
+            }
+            return analysis;
+        } catch (RuntimeException exception) {
+            throw new IllegalStateException("Model returned invalid structured requirement analysis", exception);
+        }
+    }
+
+    private static boolean validItems(List<String> items) {
+        return items != null && items.size() <= 20
+                && items.stream().allMatch(item -> item != null && !item.isBlank() && item.length() <= 2_000);
+    }
+
     public FileChangeSet generateChanges(
             String requirement,
             String repositoryContext,
@@ -57,23 +96,20 @@ public class OllamaModelService {
             String architecturePlan,
             String previousFailure) {
         String modelName = modelCatalog.resolve(modelAlias);
-        String workstreamScope = switch (workstream) {
-            case "IMPLEMENTATION" -> "Create or update production source and configuration files only.";
-            case "TESTS" -> "Create or update unit and integration test files only.";
-            case "DOCUMENTATION" -> "Create or update README, API, and runbook documentation only.";
+        String promptName = switch (workstream) {
+            case "IMPLEMENTATION" -> "implementation.prompt";
+            case "TESTS" -> "tests.prompt";
+            case "DOCUMENTATION" -> "documentation.prompt";
             default -> throw new IllegalArgumentException("Unsupported generation workstream");
         };
-        String promptText = "For the " + workstream + " workstream, " + workstreamScope + " Return one JSON object "
-                + "with a 'files' array. Each item has only 'path' and complete file 'content'. You may replace supplied "
-                + "files or create necessary new files for greenfield work. Never delete files. Do not modify secrets, "
-                + "credentials, or .github/workflows. Preserve unrelated content. Use production-quality Java 21 and "
-                + "Spring Boot for the URL shortener.\nExecution mode: " + executionMode + "\nRequirement:\n"
-                + requirement + "\n\nRequirement analysis and architecture:\n" + architecturePlan
-                + "\n\nRepository files:\n" + repositoryContext;
-        if (previousFailure != null && !previousFailure.isBlank()) {
-            promptText += "\n\nThe prior change failed verification. Correct it using this output:\n"
-                + previousFailure;
-        }
+        String previousFailureText = previousFailure == null || previousFailure.isBlank()
+            ? "None" : previousFailure;
+        String promptText = promptTemplateStore.render(promptName, Map.of(
+            "executionMode", executionMode,
+            "requirement", requirement,
+            "plan", architecturePlan,
+            "repositoryContext", repositoryContext,
+            "previousFailure", previousFailureText));
 
         Prompt prompt = new Prompt(promptText, OllamaChatOptions.builder().model(modelName).format("json").build());
         ChatResponse response = chatModel.call(prompt);
@@ -104,5 +140,21 @@ public class OllamaModelService {
     }
 
     public record FileChangeSet(List<FileChange> files) {
+    }
+
+    public record RequirementAnalysis(
+            String normalizedProblem,
+            List<String> acceptanceCriteria,
+            List<String> ambiguities,
+            List<String> assumptions,
+            List<String> risks) {
+
+        public String reviewText() {
+            return "Normalized problem:\n" + normalizedProblem
+                    + "\n\nAcceptance criteria:\n" + String.join("\n", acceptanceCriteria)
+                    + "\n\nAmbiguities:\n" + (ambiguities.isEmpty() ? "None" : String.join("\n", ambiguities))
+                    + "\n\nAssumptions:\n" + (assumptions.isEmpty() ? "None" : String.join("\n", assumptions))
+                    + "\n\nRisks:\n" + (risks.isEmpty() ? "None" : String.join("\n", risks));
+        }
     }
 }

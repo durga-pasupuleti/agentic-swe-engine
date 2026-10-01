@@ -1,6 +1,7 @@
 package com.swe.sdlc.controller;
 
 import com.swe.sdlc.config.SdlcWorkflowConfig;
+import com.swe.sdlc.model.AuditTrailStore;
 import com.swe.sdlc.model.SdlcState;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -20,9 +21,11 @@ public class HybridOrchestratorController {
     private static final int MAX_REQUIREMENT_LENGTH = 100_000;
 
     private final SdlcWorkflowConfig workflowConfig;
+    private final AuditTrailStore auditTrailStore;
 
-    public HybridOrchestratorController(SdlcWorkflowConfig workflowConfig) {
+    public HybridOrchestratorController(SdlcWorkflowConfig workflowConfig, AuditTrailStore auditTrailStore) {
         this.workflowConfig = workflowConfig;
+        this.auditTrailStore = auditTrailStore;
     }
 
     @PostMapping("/jobs")
@@ -54,7 +57,9 @@ public class HybridOrchestratorController {
             return error(HttpStatus.BAD_REQUEST, "Job alias contains unsupported characters or is too long.");
         }
 
+        String auditJobAlias = jobAlias;
         SdlcState newState = new SdlcState(requirement, repositoryId, jobAlias, userIdentity);
+        newState.setAuditSink(event -> auditTrailStore.append(auditJobAlias, event));
         newState.setModelAlias(modelAlias);
         try {
             workflowConfig.registerJob(newState);
@@ -92,14 +97,67 @@ public class HybridOrchestratorController {
         status.put("pullRequestUrl", state.getPullRequestUrl());
         status.put("specsDetectedInStorage", state.isSpecsAvailableInStorage());
         status.put("repositoryFileCount", state.getEstimatedRepoSizeFiles());
+        status.put("repositoryContextFiles", state.getRepositoryContextFiles());
         status.put("executionMode", Objects.toString(state.getExecutionMode(), "UNSET"));
         status.put("status", Objects.toString(state.getTaskStatus(), "UNKNOWN"));
+        status.put("requirement", state.getRawRequirement());
+        status.put("effectiveRequirement", state.getEffectiveRequirement());
+        status.put("requirementAnalysis", state.getRequirementAnalysis());
+        status.put("normalizedRequirement", state.getNormalizedRequirement());
+        status.put("acceptanceCriteria", state.getAcceptanceCriteria());
+        status.put("ambiguities", state.getAmbiguities());
+        status.put("assumptions", state.getAssumptions());
+        status.put("identifiedRisks", state.getIdentifiedRisks());
+        status.put("architecturePlan", state.getArchitecturePlan());
+        status.put("taskDecomposition", state.getTaskDecomposition());
         status.put("compilerLogs", Objects.toString(state.getCompilerLogs(), ""));
+        status.put("engineeringSummary", state.getEngineeringSummary());
         status.put("retryCount", state.getRetryCount());
         status.put("patchContent", Objects.toString(state.getGeneratedCodePatch(), ""));
         status.put("reliabilityMetrics", state.getReliabilityMetrics());
         status.put("auditTrail", state.getAuditTrail());
         return ResponseEntity.ok(status);
+    }
+
+    @PostMapping("/jobs/{jobAlias}/requirement-review")
+    public ResponseEntity<Map<String, Object>> reviewRequirement(
+            @PathVariable String jobAlias,
+            @RequestHeader("X-User-Identity") String userIdentity,
+            @RequestBody(required = false) Map<String, Object> payload) {
+
+        SdlcState state = workflowConfig.getJobState(jobAlias);
+        if (!isOwnedBy(state, userIdentity)) {
+            return ResponseEntity.notFound().build();
+        }
+        if (payload == null) {
+            return error(HttpStatus.BAD_REQUEST, "Requirement review decision is required.");
+        }
+        Object decisionValue = payload.get("decision");
+        Object requirementValue = payload.get("requirement");
+        String decision = decisionValue instanceof String value ? value : null;
+        String clarifiedRequirement = requirementValue instanceof String value ? value : null;
+        boolean acceptAmbiguities = Boolean.TRUE.equals(payload.get("acceptAmbiguities"));
+        if (!"APPROVE".equals(decision) && !"CLARIFY".equals(decision)) {
+            return error(HttpStatus.BAD_REQUEST, "Decision must be APPROVE or CLARIFY.");
+        }
+        if (clarifiedRequirement != null && clarifiedRequirement.length() > MAX_REQUIREMENT_LENGTH) {
+            return error(HttpStatus.BAD_REQUEST, "Clarified requirement exceeds the allowed length.");
+        }
+        if ("CLARIFY".equals(decision)
+                && (clarifiedRequirement == null || clarifiedRequirement.isBlank())) {
+            return error(HttpStatus.BAD_REQUEST, "Clarified requirement text is required.");
+        }
+        if (!"PAUSED_AT_REQUIREMENT_REVIEW".equals(state.getTaskStatus())) {
+            return error(HttpStatus.CONFLICT, "Job is not waiting for requirement review.");
+        }
+
+        if ("APPROVE".equals(decision) && !state.getAmbiguities().isEmpty() && !acceptAmbiguities) {
+            return error(HttpStatus.CONFLICT, "Explicitly acknowledge the listed ambiguities before approval.");
+        }
+        workflowConfig.reviewRequirement(jobAlias, decision, clarifiedRequirement, acceptAmbiguities);
+        return ResponseEntity.accepted().body(Map.of(
+                "jobAlias", jobAlias,
+                "status", "APPROVE".equals(decision) ? "PAUSED_AT_ENTRY_GATE" : "REANALYZING_REQUIREMENT"));
     }
 
     @GetMapping("/metrics")
@@ -139,6 +197,24 @@ public class HybridOrchestratorController {
                 "status", "RUNNING",
                 "modelAlias", state.getModelAlias()
         ));
+    }
+
+    @PostMapping("/jobs/{jobAlias}/verification")
+    public ResponseEntity<Map<String, Object>> resumeVerification(
+            @PathVariable String jobAlias,
+            @RequestHeader("X-User-Identity") String userIdentity) {
+
+        SdlcState state = workflowConfig.getJobState(jobAlias);
+        if (!isOwnedBy(state, userIdentity)) {
+            return ResponseEntity.notFound().build();
+        }
+        if (!"VERIFICATION_PENDING".equals(state.getTaskStatus())) {
+            return error(HttpStatus.CONFLICT, "Job is not waiting for Actions verification.");
+        }
+        workflowConfig.resumeVerification(jobAlias);
+        return ResponseEntity.accepted().body(Map.of(
+                "jobAlias", jobAlias,
+                "status", "VERIFYING"));
     }
 
     @PostMapping("/jobs/{jobAlias}/pull-request")

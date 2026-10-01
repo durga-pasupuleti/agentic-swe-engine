@@ -3,6 +3,8 @@
 Spring Boot workflow engine using Spring AI for Ollama and the official GitHub MCP server for repository and Actions operations.
 
 See [RUNBOOK.md](RUNBOOK.md) for setup, environment configuration, API examples, and troubleshooting.
+For a step-by-step Windows setup with local Ollama and GitHub App configuration, see [docs/LOCAL_DEPLOYMENT.md](docs/LOCAL_DEPLOYMENT.md).
+Prompts are stored as editable classpath resources by default; optional versioned PostgreSQL storage is documented in the runbook.
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and the [scenario walkthroughs](docs/scenarios/greenfield.md) for the DAG design and evaluation scenarios.
 
 ## Requirements

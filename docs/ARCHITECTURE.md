@@ -14,33 +14,37 @@
 
 ```mermaid
 flowchart TD
-    A[Job accepted] --> B[Requirement analysis]
-    B --> C[Architecture]
-    C --> D[Task decomposition]
-    D --> E[Create feature branch and collect bounded context]
-    E --> F{Entry gate: select execution mode}
-    F --> G1[Implementation agent]
-    F --> G2[Test agent]
-    F --> G3[Documentation agent]
-    G1 --> H[Join and reject conflicting file outputs]
-    G2 --> H
-    G3 --> H
-    H --> I[Policy validation]
-    I --> J[Commit to feature branch through GitHub MCP]
-    J --> K[GitHub Actions for exact commit]
-    K -->|failed| L[Compensating restore + bounded retry]
-    L --> C
-    K -->|passed| M{Owner approval}
-    M -->|reject| N[Stop; no PR]
-    M -->|approve| O[Create PR through GitHub MCP]
-    O --> P[Release ready]
+    A[Job accepted] --> B[Create branch and collect bounded context]
+    B --> C[Structured requirement analysis]
+    C --> D[Architecture]
+    D --> E[Task decomposition]
+    E --> F{Owner reviews plan}
+    F -->|clarify| C
+    F -->|approve| G{Entry gate: select execution mode}
+    G --> H1[Implementation agent]
+    G --> H2[Test agent]
+    G --> H3[Documentation agent]
+    H1 --> I[Join and reject conflicting or unreviewed writes]
+    H2 --> I
+    H3 --> I
+    I --> J[Policy validation]
+    J --> K[Commit to feature branch through GitHub MCP]
+    K --> L[GitHub Actions for exact commit]
+    L -->|pending| M[Owner resumes verification]
+    M --> L
+    L -->|failed| N[Compensating restore + bounded retry]
+    N --> D
+    L -->|passed| O{Owner approval}
+    O -->|reject| P[Stop; no PR]
+    O -->|approve| Q[Create PR through GitHub MCP]
+    Q --> R[Release ready]
 ```
 
 ## Governance And Lineage
 
-Analysis, architecture, and decomposition are retained in job state and exposed to the job owner. Parallel artifacts must pass file-count, size, path, and sensitive-path checks; conflicting writes stop the run. Workflow files, secrets, deletions, and unreviewed default-branch writes are prohibited. Actions checks are associated with the pushed commit SHA. A successful check is not a PR approval: the owner must explicitly approve the PR endpoint.
+Structured analysis, acceptance criteria, ambiguity list, assumptions, architecture, and decomposition are retained in job state and exposed to the job owner. Clarification reruns the planning stages; unresolved ambiguities require explicit owner acknowledgment. Parallel artifacts must pass file-count, size, path, and sensitive-path checks; conflicting writes and writes to tracked files outside the reviewed context stop the run. Workflow files, secrets, deletions, and unreviewed default-branch writes are prohibited. Actions checks are associated with the pushed commit SHA and can be resumed when pending. A successful check is not a PR approval: the owner must explicitly approve the PR endpoint.
 
-Every status transition, stage start/completion, replan, approval decision, failed attempt, and rollback is appended to the job audit trail. The metrics endpoint reports terminal success rate, retries, rollbacks, mean time to recovery, and end-to-end latency. Current storage is in-memory and is not durable across restarts.
+Every status transition, stage start/completion, replan, approval decision, failed attempt, and rollback is appended to a local JSONL audit log. Events include an actor and per-job SHA-256 hash chain; startup rejects a log with an invalid chain. Configure its location with `SDLC_AUDIT_LOG_FILE`. The metrics endpoint reports terminal success rate, retries, rollbacks, mean time to recovery, and end-to-end latency. The job registry and live metrics remain in-memory and are not durable across restarts. The local hash chain is tamper-evident, not an externally signed or immutable compliance archive.
 
 ## Trade-offs
 

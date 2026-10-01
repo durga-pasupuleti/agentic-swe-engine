@@ -2,6 +2,14 @@ server:
   port: 8080
 
 sdlc:
+  prompts:
+    storage: ${SDLC_PROMPT_STORAGE:classpath}
+    database:
+      url: ${SDLC_PROMPT_DATABASE_URL:jdbc:postgresql://localhost:5432/agentic_prompts}
+      username: ${SDLC_PROMPT_DATABASE_USERNAME:sdlc_prompts}
+      password: ${SDLC_PROMPT_DATABASE_PASSWORD:local-development-only}
+  audit:
+    log-file: ${SDLC_AUDIT_LOG_FILE:./data/audit-events.jsonl}
   ollama:
     models:
       code: ${SDLC_OLLAMA_MODEL_CODE:qwen2.5-coder:7b}
