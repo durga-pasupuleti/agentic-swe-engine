@@ -5,11 +5,11 @@ sdlc:
   ollama:
     base-url: "http://sdlc-ollama-engine:11434"
     model-name: "qwen2.5-coder:7b"
-  mcp:
+  mcp:  
     servers:
       git-mcp:
         command: "node"
-        script-path: "/opt/mcp-servers/git-mcp-server.js"
+        script-path: "/opt/mcp-servers/git-mcp-server.js" /**adding git mcp server configuration */
 
 logging:
   level:
