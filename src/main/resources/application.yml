@@ -1,0 +1,17 @@
+server:
+  port: 8080
+
+sdlc:
+  ollama:
+    base-url: "http://sdlc-ollama-engine:11434"
+    model-name: "qwen2.5-coder:7b"
+  mcp:
+    servers:
+      git-mcp:
+        command: "node"
+        script-path: "/opt/mcp-servers/git-mcp-server.js"
+
+logging:
+  level:
+    com.example.sdlc: DEBUG
+    org.springframework.web: INFO
