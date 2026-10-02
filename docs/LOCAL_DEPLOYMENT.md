@@ -127,10 +127,14 @@ From the engine project directory, in the same PowerShell window where you set t
 
 ```powershell
 mvn --batch-mode clean verify
+$env:SDLC_GITHUB_MCP_ENABLED = "false"
+$env:SDLC_PROMPT_STORAGE = "postgres"
+$env:SDLC_PROMPT_DATABASE_URL = "jdbc:postgresql://localhost:5433/agentic_prompts"
+$env:SDLC_OLLAMA_BASE_URL = "http://localhost:11434"
 mvn spring-boot:run
 ```
 
-Leave this terminal open. The application listens on `http://localhost:8080` and starts the official GitHub MCP server as a Docker child process. Docker Desktop, Ollama, and the terminal running Spring Boot must remain available. Audit events are stored in `./data/audit-events.jsonl` by default; set `$env:SDLC_AUDIT_LOG_FILE` before launch to select another local path. Keep the file private and back it up if audit history matters; live job status resets when the process restarts.
+This local-only mode starts the API without GitHub access. Leave the terminal open. The application listens on `http://localhost:8080`; Docker Desktop, Ollama, Postgres, and the terminal running Spring Boot must remain available. For repository jobs, follow step 10 to set the PAT and restart with GitHub MCP enabled. Audit events are stored in `./data/audit-events.jsonl` by default; set `$env:SDLC_AUDIT_LOG_FILE` before launch to select another local path. Keep the file private and back it up if audit history matters; live job status resets when the process restarts.
 
 ## 9. Submit a generation job
 
