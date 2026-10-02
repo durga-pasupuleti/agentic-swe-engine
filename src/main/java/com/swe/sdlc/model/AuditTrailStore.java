@@ -1,6 +1,7 @@
 package com.swe.sdlc.model;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
@@ -22,6 +23,7 @@ public class AuditTrailStore {
     private final ObjectMapper objectMapper;
     private final Map<String, String> chainHeads = new HashMap<>();
 
+    @Autowired
     public AuditTrailStore(ObjectMapper objectMapper,
             @Value("${sdlc.audit.log-file:./data/audit-events.jsonl}") String logFile) {
         this(Path.of(logFile), objectMapper);

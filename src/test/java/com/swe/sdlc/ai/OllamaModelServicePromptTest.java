@@ -2,6 +2,8 @@ package com.swe.sdlc.ai;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -29,5 +31,12 @@ class OllamaModelServicePromptTest {
         assertTrue(contract.contains("acceptanceCriteria"));
         assertTrue(contract.contains("ambiguities"));
         assertTrue(contract.contains("assumptions"));
+    }
+
+    @Test
+    void acceptsNoOpWorkstreamsButNotMalformedChangeSets() {
+        assertTrue(OllamaModelService.validFileChangeSet(new OllamaModelService.FileChangeSet(List.of())));
+        assertFalse(OllamaModelService.validFileChangeSet(null));
+        assertFalse(OllamaModelService.validFileChangeSet(new OllamaModelService.FileChangeSet(null)));
     }
 }

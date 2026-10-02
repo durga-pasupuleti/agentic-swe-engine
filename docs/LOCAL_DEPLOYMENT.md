@@ -1,6 +1,6 @@
 # Local Deployment Guide
 
-This guide runs the engine and model inference on your Windows computer. GitHub repository operations still use GitHub's API through the official GitHub MCP server. Do not paste a personal access token, GitHub App private key, or other secret into chat, source files, or a public issue.
+This guide runs the engine and model inference on your Windows computer. GitHub repository operations still use GitHub's API through the official GitHub MCP server. Do not paste a personal access token or other secret into chat, source files, or a public issue.
 
 ## 1. Install prerequisites
 
@@ -10,7 +10,7 @@ Install and start:
 - Maven 3.6.3 or newer
 - Docker Desktop, configured to use the Linux engine
 - Git, if you plan to clone the project
-- A GitHub account with permission to create/install a GitHub App on the target repository
+- A GitHub account with permission to create a fine-grained personal access token for the target repository
 
 The first Docker image and model downloads are several gigabytes. Keep Docker Desktop running while using the engine.
 
@@ -25,21 +25,18 @@ cd <downloaded-folder>\agentic-swe-engine
 
 Run the remaining commands from the `agentic-swe-engine` directory (the directory containing `pom.xml` and `compose.yaml`).
 
-## 3. Create a GitHub App
+## 3. Create a fine-grained GitHub token
 
-The engine uses GitHub App installation authentication, not a personal access token.
-
-1. Open GitHub **Settings > Developer settings > GitHub Apps > New GitHub App**. For an organization-owned repository, create the app under the organization settings if required by its policy.
-2. Give the app a name. Webhooks are not required for this local workflow.
+1. Open GitHub **Settings > Developer settings > Personal access tokens > Fine-grained tokens** and choose **Generate new token**. Organization-owned repositories may require an organization owner to approve the token.
+2. Set an expiration appropriate for your local test. Select **Only select repositories** and choose the repository you will test.
 3. Grant repository permissions:
-   - **Contents: Read and write**
-   - **Pull requests: Read and write**
-   - **Actions: Read-only**
-4. Create the app, note its **App ID**, and generate/download a private key (`.pem`).
-5. Install the app only on the repository or repositories the engine is allowed to modify. Note the installation ID from the installation page URL.
-6. Keep the downloaded private key outside the project folder. For example, create `%USERPROFILE%\.config\agentic-swe-engine` and move the `.pem` file there. Never commit or share this file.
+  - **Contents: Read and write**
+  - **Pull requests: Read and write**
+  - **Actions: Read-only**
+  - **Metadata: Read-only** (usually selected automatically)
+4. Generate the token. Copy it once into a password manager or directly into the secure PowerShell prompt in step 6. Do not save it in this project.
 
-For GitHub Enterprise, use the registered HTTPS host instead of `https://github.com` in step 5 below.
+For GitHub Enterprise, set the registered HTTPS host in `SDLC_GITHUB_HOST` in step 6.
 
 ## 4. Start local Ollama
 
@@ -65,32 +62,36 @@ Classpath prompt files work without a database. To store active, versioned promp
 ```powershell
 docker compose up -d sdlc-prompts-db
 $env:SDLC_PROMPT_STORAGE = "postgres"
-$env:SDLC_PROMPT_DATABASE_URL = "jdbc:postgresql://localhost:5432/agentic_prompts"
+$env:SDLC_PROMPT_DATABASE_URL = "jdbc:postgresql://localhost:5433/agentic_prompts"
 $env:SDLC_PROMPT_DATABASE_USERNAME = "sdlc_prompts"
 $env:SDLC_PROMPT_DATABASE_PASSWORD = "local-development-only"
 ```
 
-The first app startup creates the prompt table and seeds version 1 from the checked-in files. Subsequent prompt loads use the active database row. New prompt edits should be inserted as a new version and activated transactionally; previous versions remain available for rollback. The Compose database port is loopback-only. The sample password is for local development only; change it before using a shared database.
+The first app startup creates the prompt table and seeds version 1 from the checked-in files. Subsequent prompt loads use the active database row. New prompt edits should be inserted as a new version and activated transactionally; previous versions remain available for rollback. The Compose database is bound to loopback port 5433 to avoid colliding with an existing local Postgres service. The sample password is for local development only; change it before using a shared database.
 
-## 6. Enter GitHub App settings locally
+## 6. Enter the GitHub token locally
 
-Set these variables in the same PowerShell window that will run Spring Boot. The values are not written into project files. The private key variable contains only the path to the `.pem` file, not the key itself.
+Enter the token through PowerShell's secure prompt in the same window that will run Spring Boot. The token is not echoed or written into project files.
 
 ```powershell
-$env:GITHUB_APP_ID = Read-Host "GitHub App ID"
-$env:GITHUB_APP_INSTALLATION_ID = Read-Host "GitHub App installation ID"
-$env:GITHUB_APP_PRIVATE_KEY_FILE = Read-Host "Full path to the downloaded .pem file"
+$secureToken = Read-Host "Fine-grained GitHub token" -AsSecureString
+$tokenPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureToken)
+try {
+  $env:GITHUB_PERSONAL_ACCESS_TOKEN = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($tokenPointer)
+} finally {
+  [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($tokenPointer)
+}
 $env:SDLC_GITHUB_HOST = "https://github.com"
 $env:SDLC_DOCKER_COMMAND = "docker"
 ```
 
-Check the path without printing the key:
+Verify only that a token is set; do not print it:
 
 ```powershell
-Test-Path $env:GITHUB_APP_PRIVATE_KEY_FILE
+([string]::IsNullOrWhiteSpace($env:GITHUB_PERSONAL_ACCESS_TOKEN)) -eq $false
 ```
 
-This should return `True`. These environment variables exist only in this PowerShell process and its child processes. Open a new PowerShell window and set them again after closing it.
+This should return `True`. The token exists in this PowerShell process and child processes so Docker can pass it to the MCP container. It is not persisted by the guide. Open a new PowerShell window and enter it again after closing this one.
 
 ## 7. Prepare the target repository
 
@@ -200,7 +201,25 @@ Invoke-RestMethod -Method Post `
   -Headers $headers
 ```
 
-## 10. Approve or reject pull request creation
+## 10. Use the Postman collection
+
+Import `docs/postman/Agentic-SWE-Engine.postman_collection.json` into Postman. Set collection variables `baseUrl` to `http://localhost:8080`, `identity` to your local user label, and `repository` to the installed target repository as `owner/name`.
+
+The collection contains greenfield URL-shortener, brownfield enhancement/refactor/bug-fix, tests-only, documentation-only, and ambiguous-requirement create requests. Each successful create stores its returned alias as `jobAlias`. Use the lifecycle requests to inspect the plan, clarify or approve it, choose execution mode, resume pending Actions checks, and approve or reject PR creation. For the ambiguous case, run **Clarify ambiguous requirement**, review the regenerated plan, then approve it.
+
+The running local process was started with GitHub MCP disabled until credentials are configured. To run actual repository scenarios, stop that process with Ctrl+C. In its PowerShell window, set the token using step 6, then set:
+
+```powershell
+$env:SDLC_GITHUB_MCP_ENABLED = "true"
+$env:SDLC_PROMPT_STORAGE = "postgres"
+$env:SDLC_PROMPT_DATABASE_URL = "jdbc:postgresql://localhost:5433/agentic_prompts"
+$env:SDLC_OLLAMA_BASE_URL = "http://localhost:11434"
+mvn spring-boot:run
+```
+
+Do not paste the token into Postman or chat. Postman sends only the requirement and repository name; the PAT is passed from the local process to the MCP container.
+
+## 11. Approve or reject pull request creation
 
 Only approve after reviewing the job and confirming the GitHub Actions run passed. To create the PR:
 
@@ -217,7 +236,7 @@ To reject PR creation, use `$false` instead. The PR URL and number appear in the
 
 - **Docker is unavailable:** start Docker Desktop and wait for `docker info` to show server information.
 - **Ollama connection refused:** confirm the container is running with `docker ps` and that `SDLC_OLLAMA_BASE_URL` is `http://localhost:11434` in the Spring Boot terminal.
-- **MCP fails at startup:** check the App ID, installation ID, private-key path, Docker availability, and `docker pull ghcr.io/github/github-mcp-server:v1.13.0`.
-- **GitHub denies access:** confirm the App is installed on the exact target repository and has the permissions listed above.
+- **MCP fails at startup:** check that `GITHUB_PERSONAL_ACCESS_TOKEN` is set, Docker is available, and `docker pull ghcr.io/github/github-mcp-server:v1.13.0` succeeds.
+- **GitHub denies access:** confirm the token is unexpired, authorized for the exact target repository, and has the permissions listed above.
 - **Job stays verification-pending:** confirm GitHub Actions is enabled and a workflow on the default branch triggers for `agentic/**` pushes.
 - **Do not deploy this local setup publicly:** the sample identity header is not authentication, jobs are stored in memory, and the service has no production identity/rate-limit controls.

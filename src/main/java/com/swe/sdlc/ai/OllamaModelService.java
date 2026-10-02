@@ -87,6 +87,10 @@ public class OllamaModelService {
                 && items.stream().allMatch(item -> item != null && !item.isBlank() && item.length() <= 2_000);
     }
 
+    static boolean validFileChangeSet(FileChangeSet changes) {
+        return changes != null && changes.files() != null && changes.files().size() <= MAX_CHANGED_FILES;
+    }
+
     public FileChangeSet generateChanges(
             String requirement,
             String repositoryContext,
@@ -126,8 +130,7 @@ public class OllamaModelService {
         }
         try {
             FileChangeSet changes = objectMapper.readValue(json, FileChangeSet.class);
-            if (changes == null || changes.files() == null || changes.files().isEmpty()
-                    || changes.files().size() > MAX_CHANGED_FILES) {
+                if (!validFileChangeSet(changes)) {
                 throw new IllegalStateException("Ollama returned an invalid file-change set");
             }
             return changes;

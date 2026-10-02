@@ -1,0 +1,161 @@
+{
+  "info": {
+    "name": "Agentic SWE Engine - Local Scenarios",
+    "description": "Local Ollama-backed SDLC scenarios. Set collection variables baseUrl, identity, and repository before use. GitHub MCP must be enabled and configured for job creation.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "identity", "value": "local-user" },
+    { "key": "repository", "value": "owner/repository" },
+    { "key": "jobAlias", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Create job scenarios",
+      "item": [
+        {
+          "name": "Greenfield - URL shortener",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-User-Identity", "value": "{{identity}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"repositoryId\": \"{{repository}}\",\n  \"modelAlias\": \"code\",\n  \"requirement\": \"Build a URL shortener with create and resolve APIs, collision-safe codes, configurable expiration, persistent storage, input validation, analytics, tests, and API documentation.\"\n}" },
+            "url": "{{baseUrl}}/api/v3/sdlc/jobs"
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Job accepted', () => pm.response.to.have.status(202));", "if (pm.response.code === 202) pm.collectionVariables.set('jobAlias', pm.response.json().jobAlias);"] } }]
+        },
+        {
+          "name": "Brownfield - Enhancement",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-User-Identity", "value": "{{identity}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"repositoryId\": \"{{repository}}\",\n  \"modelAlias\": \"code\",\n  \"requirement\": \"In the existing service, add configurable expiration for shortened URLs. Expired links must return HTTP 410. Preserve the repository's current language, framework, and API conventions.\"\n}" },
+            "url": "{{baseUrl}}/api/v3/sdlc/jobs"
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Job accepted', () => pm.response.to.have.status(202));", "if (pm.response.code === 202) pm.collectionVariables.set('jobAlias', pm.response.json().jobAlias);"] } }]
+        },
+        {
+          "name": "Brownfield - Refactor",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-User-Identity", "value": "{{identity}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"repositoryId\": \"{{repository}}\",\n  \"modelAlias\": \"code\",\n  \"requirement\": \"Refactor the URL resolution flow to isolate persistence access behind the existing repository abstraction. Preserve externally observable behavior and add regression tests.\"\n}" },
+            "url": "{{baseUrl}}/api/v3/sdlc/jobs"
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Job accepted', () => pm.response.to.have.status(202));", "if (pm.response.code === 202) pm.collectionVariables.set('jobAlias', pm.response.json().jobAlias);"] } }]
+        },
+        {
+          "name": "Brownfield - Bug fix",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-User-Identity", "value": "{{identity}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"repositoryId\": \"{{repository}}\",\n  \"modelAlias\": \"code\",\n  \"requirement\": \"Fix short-code creation so concurrent requests cannot persist duplicate codes. Add a regression test that demonstrates the race condition and verifies the fix.\"\n}" },
+            "url": "{{baseUrl}}/api/v3/sdlc/jobs"
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Job accepted', () => pm.response.to.have.status(202));", "if (pm.response.code === 202) pm.collectionVariables.set('jobAlias', pm.response.json().jobAlias);"] } }]
+        },
+        {
+          "name": "Tests only",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-User-Identity", "value": "{{identity}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"repositoryId\": \"{{repository}}\",\n  \"modelAlias\": \"code\",\n  \"requirement\": \"Improve unit and integration test coverage for short-code collision handling, expired links, invalid URLs, and not-found behavior. Do not change production behavior unless a test exposes a defect; document any defect before changing it.\"\n}" },
+            "url": "{{baseUrl}}/api/v3/sdlc/jobs"
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Job accepted', () => pm.response.to.have.status(202));", "if (pm.response.code === 202) pm.collectionVariables.set('jobAlias', pm.response.json().jobAlias);"] } }]
+        },
+        {
+          "name": "Documentation only",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-User-Identity", "value": "{{identity}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"repositoryId\": \"{{repository}}\",\n  \"modelAlias\": \"code\",\n  \"requirement\": \"Update the URL shortener's README and API documentation to explain create, resolve, expiration, analytics, error responses, configuration, and local development. Do not change production code or tests.\"\n}" },
+            "url": "{{baseUrl}}/api/v3/sdlc/jobs"
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Job accepted', () => pm.response.to.have.status(202));", "if (pm.response.code === 202) pm.collectionVariables.set('jobAlias', pm.response.json().jobAlias);"] } }]
+        },
+        {
+          "name": "Ambiguous - Make links safer",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-User-Identity", "value": "{{identity}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"repositoryId\": \"{{repository}}\",\n  \"modelAlias\": \"code\",\n  \"requirement\": \"Make links safer.\"\n}" },
+            "url": "{{baseUrl}}/api/v3/sdlc/jobs"
+          },
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Job accepted', () => pm.response.to.have.status(202));", "if (pm.response.code === 202) pm.collectionVariables.set('jobAlias', pm.response.json().jobAlias);"] } }]
+        }
+      ]
+    },
+    {
+      "name": "Workflow lifecycle",
+      "item": [
+        {
+          "name": "Get current job status and plan",
+          "request": { "method": "GET", "header": [{ "key": "X-User-Identity", "value": "{{identity}}" }], "url": "{{baseUrl}}/api/v3/sdlc/jobs/{{jobAlias}}/status" }
+        },
+        {
+          "name": "Clarify ambiguous requirement",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-User-Identity", "value": "{{identity}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"decision\": \"CLARIFY\",\n  \"requirement\": \"Add URL expiration in days. Expired links return HTTP 410 Gone. Do not add phishing detection or analytics changes.\"\n}" },
+            "url": "{{baseUrl}}/api/v3/sdlc/jobs/{{jobAlias}}/requirement-review"
+          }
+        },
+        {
+          "name": "Approve reviewed requirement",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-User-Identity", "value": "{{identity}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"decision\": \"APPROVE\",\n  \"acceptAmbiguities\": false\n}" },
+            "url": "{{baseUrl}}/api/v3/sdlc/jobs/{{jobAlias}}/requirement-review"
+          }
+        },
+        {
+          "name": "Accept remaining ambiguities explicitly",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-User-Identity", "value": "{{identity}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"decision\": \"APPROVE\",\n  \"acceptAmbiguities\": true\n}" },
+            "url": "{{baseUrl}}/api/v3/sdlc/jobs/{{jobAlias}}/requirement-review"
+          }
+        },
+        {
+          "name": "Select execution mode",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-User-Identity", "value": "{{identity}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"mode\": \"DIRECT_CODE\"\n}" },
+            "url": "{{baseUrl}}/api/v3/sdlc/jobs/{{jobAlias}}/select-mode"
+          }
+        },
+        {
+          "name": "Resume pending Actions verification",
+          "request": { "method": "POST", "header": [{ "key": "X-User-Identity", "value": "{{identity}}" }], "url": "{{baseUrl}}/api/v3/sdlc/jobs/{{jobAlias}}/verification" }
+        },
+        {
+          "name": "Approve pull request creation",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-User-Identity", "value": "{{identity}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"approved\": true\n}" },
+            "url": "{{baseUrl}}/api/v3/sdlc/jobs/{{jobAlias}}/pull-request"
+          }
+        },
+        {
+          "name": "Reject pull request creation",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "X-User-Identity", "value": "{{identity}}" }, { "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"approved\": false\n}" },
+            "url": "{{baseUrl}}/api/v3/sdlc/jobs/{{jobAlias}}/pull-request"
+          }
+        },
+        {
+          "name": "Reliability metrics",
+          "request": { "method": "GET", "header": [{ "key": "X-User-Identity", "value": "{{identity}}" }], "url": "{{baseUrl}}/api/v3/sdlc/metrics" }
+        }
+      ]
+    }
+  ]
+}

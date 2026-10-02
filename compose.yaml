@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: sdlc_prompts
       POSTGRES_PASSWORD: ${SDLC_PROMPT_DATABASE_PASSWORD:-local-development-only}
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
       - prompt-data:/var/lib/postgresql/data
     healthcheck:

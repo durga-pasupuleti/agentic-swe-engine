@@ -5,7 +5,7 @@ sdlc:
   prompts:
     storage: ${SDLC_PROMPT_STORAGE:classpath}
     database:
-      url: ${SDLC_PROMPT_DATABASE_URL:jdbc:postgresql://localhost:5432/agentic_prompts}
+      url: ${SDLC_PROMPT_DATABASE_URL:jdbc:postgresql://localhost:5433/agentic_prompts}
       username: ${SDLC_PROMPT_DATABASE_USERNAME:sdlc_prompts}
       password: ${SDLC_PROMPT_DATABASE_PASSWORD:local-development-only}
   audit:
@@ -27,7 +27,7 @@ spring:
           temperature: 0.2
     mcp:
       client:
-        enabled: true
+        enabled: ${SDLC_GITHUB_MCP_ENABLED:true}
         name: agentic-swe-engine
         version: 1.0.0
         type: SYNC
@@ -42,23 +42,15 @@ spring:
                 - run
                 - -i
                 - --rm
-                - --mount
-                - type=bind,src=${GITHUB_APP_PRIVATE_KEY_FILE},dst=/run/secrets/github-app.pem,readonly
                 - -e
-                - GITHUB_APP_ID
-                - -e
-                - GITHUB_APP_INSTALLATION_ID
-                - -e
-                - GITHUB_APP_PRIVATE_KEY_PATH
+                - GITHUB_PERSONAL_ACCESS_TOKEN
                 - -e
                 - GITHUB_HOST
                 - -e
                 - GITHUB_TOOLSETS
                 - ghcr.io/github/github-mcp-server:v1.13.0
               env:
-                GITHUB_APP_ID: ${GITHUB_APP_ID}
-                GITHUB_APP_INSTALLATION_ID: ${GITHUB_APP_INSTALLATION_ID}
-                GITHUB_APP_PRIVATE_KEY_PATH: /run/secrets/github-app.pem
+                GITHUB_PERSONAL_ACCESS_TOKEN: ${GITHUB_PERSONAL_ACCESS_TOKEN:}
                 GITHUB_HOST: ${SDLC_GITHUB_HOST:https://github.com}
                 GITHUB_TOOLSETS: repos,git,actions,pull_requests
 

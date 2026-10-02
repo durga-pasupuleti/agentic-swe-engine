@@ -2,7 +2,7 @@
 
 ## Architecture
 
-The Spring Boot engine uses Spring AI for Ollama and Spring AI's synchronous MCP client for GitHub's official MCP server. GitHub's server runs as a Docker stdio child process and authenticates as a GitHub App installation. Repository changes go to a remote feature branch; GitHub Actions verifies the changes. The engine creates a pull request only after owner approval.
+The Spring Boot engine uses Spring AI for Ollama and Spring AI's synchronous MCP client for GitHub's official MCP server. GitHub's server runs as a Docker stdio child process and authenticates with a locally supplied personal access token. Repository changes go to a remote feature branch; GitHub Actions verifies the changes. The engine creates a pull request only after owner approval.
 
 The separate deployment notes and secret-variable template are in `C:\Project\AgenticSI\mcp-server`.
 
@@ -13,33 +13,37 @@ The separate deployment notes and secret-variable template are in `C:\Project\Ag
 - Docker Desktop with the Linux engine running
 - PostgreSQL is optional; classpath prompt files are the default
 - Ollama, started locally or with the included `compose.yaml`
-- A GitHub App installed only on repositories the service may modify
+- A fine-grained GitHub personal access token scoped only to repositories the service may modify
 - A GitHub Actions workflow enabled for feature-branch pushes
 
-Grant the App repository Contents read/write, Pull requests read/write, and Actions read permissions. Install it only on the repositories this service should access. Store its private key outside the repository and restrict file access.
+Grant the token repository Contents read/write, Pull requests read/write, and Actions read permissions. Select only repositories this service should access. Treat the token as a secret and never commit or paste it into source files.
 
 The API trusts `X-User-Identity` to identify job ownership. Put the service behind an authenticated gateway or add a Spring Security identity integration that overwrites this header; do not accept a caller-supplied identity directly from the public internet.
 Audit events are written to `./data/audit-events.jsonl` by default. Override the path with `SDLC_AUDIT_LOG_FILE`; keep the file on a protected local volume and include it in the deployment's retention/backup policy. The job registry itself remains in-memory.
 
-## Configure GitHub App
+## Configure GitHub Token
 
-Set these environment variables in the same shell that launches Spring Boot. Replace placeholders locally; never put the private key contents in source files or command-line arguments.
+Create a fine-grained personal access token in GitHub **Settings > Developer settings > Personal access tokens > Fine-grained tokens**. Select only the target repository or repositories. Grant Contents read/write, Pull requests read/write, and Actions read permissions. Set the token in the same PowerShell session that launches Spring Boot without echoing it:
 
 ```powershell
-$env:GITHUB_APP_ID = "<app-id>"
-$env:GITHUB_APP_INSTALLATION_ID = "<installation-id>"
-$env:GITHUB_APP_PRIVATE_KEY_FILE = "C:\secrets\github-app.pem"
+$secureToken = Read-Host "Fine-grained GitHub token" -AsSecureString
+$tokenPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureToken)
+try {
+  $env:GITHUB_PERSONAL_ACCESS_TOKEN = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($tokenPointer)
+} finally {
+  [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($tokenPointer)
+}
 $env:SDLC_GITHUB_HOST = "https://github.com"
 $env:SDLC_DOCKER_COMMAND = "docker"
 ```
 
 For GitHub Enterprise Server or `ghe.com`, use the registered HTTPS host in `SDLC_GITHUB_HOST`. The GitHub MCP server obtains and refreshes installation tokens; callers do not send VCS tokens.
 
-Confirm Docker is running and the GitHub App key path exists:
+Confirm Docker is running and the token is available without printing it:
 
 ```powershell
 docker info
-Test-Path $env:GITHUB_APP_PRIVATE_KEY_FILE
+([string]::IsNullOrWhiteSpace($env:GITHUB_PERSONAL_ACCESS_TOKEN)) -eq $false
 docker pull ghcr.io/github/github-mcp-server:v1.13.0
 ```
 
@@ -71,7 +75,7 @@ Prompt files in `src/main/resources/prompts` are used by default. To use version
 ```powershell
 docker compose up -d sdlc-prompts-db
 $env:SDLC_PROMPT_STORAGE = "postgres"
-$env:SDLC_PROMPT_DATABASE_URL = "jdbc:postgresql://localhost:5432/agentic_prompts"
+$env:SDLC_PROMPT_DATABASE_URL = "jdbc:postgresql://localhost:5433/agentic_prompts"
 $env:SDLC_PROMPT_DATABASE_USERNAME = "sdlc_prompts"
 $env:SDLC_PROMPT_DATABASE_PASSWORD = "local-development-only"
 ```
@@ -84,7 +88,7 @@ FROM prompt_template
 ORDER BY template_name, version;
 ```
 
-To publish an edited prompt, insert it as a new inactive version, then activate it in one transaction by deactivating the old row and activating the new row. Keep one active version per template. The database port is bound to loopback in Compose. Change the local-only default password before using a shared or production database.
+To publish an edited prompt, insert it as a new inactive version, then activate it in one transaction by deactivating the old row and activating the new row. Keep one active version per template. The database is bound to loopback port 5433 in Compose to avoid colliding with an existing local service. Change the local-only default password before using a shared or production database.
 
 ## Build And Run
 
@@ -155,12 +159,12 @@ To reject PR creation, send `{"approved":false}` to the same endpoint. Approval 
 
 ## Troubleshooting
 
-- **MCP server fails at startup:** check Docker Desktop is running, the image can be pulled, and `GITHUB_APP_PRIVATE_KEY_FILE` exists.
-- **GitHub returns 401/404:** verify App ID, installation ID, host, and that the App is installed on the target repository.
+- **MCP server fails at startup:** check Docker Desktop is running, the image can be pulled, and `GITHUB_PERSONAL_ACCESS_TOKEN` is set in the Spring Boot shell.
+- **GitHub returns 401/404:** verify the token is valid, has not expired, includes the target repository and required permissions, and uses the correct host.
 - **Write operation is denied:** ensure the installation has repository Contents write permission. Workflow files are intentionally excluded.
 - **Job remains `VERIFICATION_PENDING`:** ensure GitHub Actions are enabled and a workflow runs on the `agentic/**` branch. The engine does not claim success without a completed run.
 - **Ollama errors:** check `SDLC_OLLAMA_BASE_URL` and that the selected model is pulled.
-- **Build or runtime unavailable:** Maven is required to build and verify the engine. Docker with its Linux engine, the GitHub App configuration, and a reachable Ollama service are required to run the engine and process jobs. GitHub Actions validates generated target-repository changes; it does not replace building the engine itself.
+- **Build or runtime unavailable:** Maven is required to build and verify the engine. Docker with its Linux engine, the GitHub token, and a reachable Ollama service are required to run the engine and process jobs. GitHub Actions validates generated target-repository changes; it does not replace building the engine itself.
 
 ## Current Limits
 

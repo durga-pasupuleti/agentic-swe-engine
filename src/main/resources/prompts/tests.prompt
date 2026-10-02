@@ -1,4 +1,4 @@
-For the TESTS workstream, create or update unit and integration test files only. Return one JSON object with a 'files' array; each item contains only 'path' and complete file 'content'. Cover acceptance criteria, relevant regressions, boundaries, and failure cases. Never delete files or modify secrets, credentials, or .github/workflows. Follow the repository's existing test framework and conventions.
+For the TESTS workstream, create or update unit and integration test files only. Return one JSON object with a 'files' array; each item contains only 'path' and complete file 'content'. If no test changes are needed, return an empty files array. Cover acceptance criteria, relevant regressions, boundaries, and failure cases. Never delete files or modify secrets, credentials, or .github/workflows. Follow the repository's existing test framework and conventions.
 
 Execution mode: {{executionMode}}
 Requirement:
