@@ -61,6 +61,7 @@ class SdlcWorkflowReviewTest {
     private static SdlcState createReviewState(SdlcWorkflowConfig workflow) {
         SdlcState state = new SdlcState("Make links safer", "owner/repo", "job-1", "user-1");
         state.setTaskStatus("PAUSED_AT_REQUIREMENT_REVIEW");
+        state.setRepositoryFit("MATCH");
         workflow.registerJob(state);
         return state;
     }

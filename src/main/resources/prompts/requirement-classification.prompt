@@ -1,0 +1,21 @@
+Classify the requested change and decide whether the supplied repository is a suitable target. Return only one JSON object with exactly these three fields:
+
+{"changeClassification":"EXISTING_CHANGE","repositoryFit":"MATCH","repositoryFitReason":"Evidence from the repository context supports the match."}
+
+changeClassification must be NEW_CHANGE, EXISTING_CHANGE, or AMBIGUOUS.
+- NEW_CHANGE: add a capability or application not currently present.
+- EXISTING_CHANGE: modify, fix, refactor, test, or document behavior already present.
+- AMBIGUOUS: the requirement does not establish what change is intended.
+
+repositoryFit must be MATCH, MISMATCH, or INSUFFICIENT_CONTEXT.
+- MATCH: repository evidence supports it as the target, or it is empty and the request is greenfield.
+- MISMATCH: repository evidence clearly shows it is unrelated to the requested system or capability.
+- INSUFFICIENT_CONTEXT: the supplied evidence is not enough to decide. Do not guess.
+
+repositoryFitReason must briefly cite evidence from the supplied context. Do not invent files, APIs, or capabilities. Use JSON strings and no Markdown.
+
+Requirement:
+{{requirement}}
+
+Repository context:
+{{repositoryContext}}

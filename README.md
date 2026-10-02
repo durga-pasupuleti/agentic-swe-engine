@@ -60,7 +60,7 @@ $headers = @{ "X-User-Identity" = "local-user" }
 Invoke-RestMethod -Uri "http://localhost:8080/api/v3/sdlc/jobs/$jobAlias/status" -Headers $headers
 ```
 
-When status is `PAUSED_AT_REQUIREMENT_REVIEW`, review the model-selected `requirementCategory` (`GREENFIELD`, `ENHANCEMENT`, `BROWNFIELD`, or `AMBIGUOUS`), along with `normalizedRequirement`, `acceptanceCriteria`, `ambiguities`, `assumptions`, `identifiedRisks`, `architecturePlan`, and `taskDecomposition`. For an ambiguous requirement, clarify it first:
+When status is `PAUSED_AT_REQUIREMENT_REVIEW`, review the model-selected `changeClassification` (`NEW_CHANGE`, `EXISTING_CHANGE`, or `AMBIGUOUS`) and `repositoryFit` (`MATCH`, `MISMATCH`, or `INSUFFICIENT_CONTEXT`), along with `repositoryFitReason`, `normalizedRequirement`, `acceptanceCriteria`, `ambiguities`, `assumptions`, `identifiedRisks`, `architecturePlan`, and `taskDecomposition`. A repository mismatch stops the job before branch creation. For an ambiguous requirement or insufficient repository context, clarify it first:
 
 ```powershell
 $review = @{ decision = "CLARIFY"; requirement = "State the exact behavior and acceptance criteria." } | ConvertTo-Json -Compress

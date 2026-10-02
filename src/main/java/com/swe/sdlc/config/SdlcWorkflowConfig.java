@@ -135,12 +135,8 @@ public class SdlcWorkflowConfig {
         try {
             state.beginStage("REPOSITORY_DISCOVERY");
             String[] repositoryParts = state.getTargetRepositoryId().split("/", 2);
-            String branchName = "agentic/" + state.getJobAlias() + "-"
-                    + UUID.randomUUID().toString().substring(0, 8);
-            githubMcpManager.createBranch(repositoryParts[0], repositoryParts[1], branchName);
-            state.setBranchName(branchName);
             GitHubMcpManager.RepositoryContext discovery = githubMcpManager.loadContext(
-                repositoryParts[0], repositoryParts[1], branchName, state.getRawRequirement());
+            repositoryParts[0], repositoryParts[1], state.getRawRequirement());
             repositoryContexts.put(state.getJobAlias(), discovery);
             List<String> contextFiles = discovery.originalFiles().keySet().stream().sorted().toList();
             state.setRepositoryContextFiles(contextFiles);
@@ -149,16 +145,36 @@ public class SdlcWorkflowConfig {
             state.setEstimatedRepoSizeFiles(discovery.estimatedRepoSizeFiles());
             state.setSpecsAvailableInStorage(discovery.specsAvailableInStorage());
 
-                WorkflowPlan plan = generateWorkflowPlan(state, discovery);
-                saveWorkflowPlan(state, plan);
-            state.completeStage("REPOSITORY_DISCOVERY", "branch=" + branchName
+            WorkflowPlan plan = generateWorkflowPlan(state, discovery);
+            saveWorkflowPlan(state, plan);
+            if ("MISMATCH".equals(state.getRepositoryFit())) {
+                state.completeStage("REPOSITORY_DISCOVERY", "repository-fit=MISMATCH");
+                fail(state, "Selected repository does not match the requirement: "
+                        + state.getRepositoryFitReason());
+                return;
+            }
+            if ("MATCH".equals(state.getRepositoryFit())) {
+                createFeatureBranch(state, repositoryParts[0], repositoryParts[1]);
+            }
+            state.completeStage("REPOSITORY_DISCOVERY", "repository-fit=" + state.getRepositoryFit()
+                    + "; branch=" + state.getBranchName()
                     + "; tracked-files=" + discovery.estimatedRepoSizeFiles());
-                state.setTaskStatus("PAUSED_AT_REQUIREMENT_REVIEW");
-                state.recordDecision("REQUIREMENT_REVIEW_REQUIRED",
+            state.setTaskStatus("PAUSED_AT_REQUIREMENT_REVIEW");
+            state.recordDecision("REQUIREMENT_REVIEW_REQUIRED",
                     "Execution is blocked until the owner reviews the plan");
         } catch (RuntimeException exception) {
             fail(state, safeMessage(exception));
         }
+    }
+
+    private void createFeatureBranch(SdlcState state, String owner, String repo) {
+        if (!state.getBranchName().isBlank()) {
+            return;
+        }
+        String branchName = "agentic/" + state.getJobAlias() + "-"
+                + UUID.randomUUID().toString().substring(0, 8);
+        githubMcpManager.createBranch(owner, repo, branchName);
+        state.setBranchName(branchName);
     }
 
     private void executePatchWorkflow(SdlcState state, String mode) {
@@ -352,7 +368,9 @@ public class SdlcWorkflowConfig {
                         OllamaModelService.RequirementAnalysis understanding = withModelFallback(state, stage.name(),
                             alias -> ollamaModelService.analyzeRequirement(
                                 state.getEffectiveRequirement(), repositoryContext.text(), alias));
-                        state.setRequirementCategory(understanding.requirementCategory().name());
+                        state.setChangeClassification(understanding.changeClassification().name());
+                        state.setRepositoryFit(understanding.repositoryFit().name());
+                        state.setRepositoryFitReason(understanding.repositoryFitReason());
                         state.setNormalizedRequirement(understanding.normalizedProblem());
                         state.setAcceptanceCriteria(understanding.acceptanceCriteria());
                         state.setAmbiguities(understanding.ambiguities());
@@ -411,6 +429,10 @@ public class SdlcWorkflowConfig {
                 throw new IllegalStateException("Job is not waiting for requirement review");
             }
             if ("APPROVE".equals(decision)) {
+                if (!"MATCH".equals(state.getRepositoryFit())) {
+                    throw new IllegalStateException(
+                            "Repository fit must be MATCH before approving the plan");
+                }
                 if (!state.getAmbiguities().isEmpty() && !acceptAmbiguities) {
                     throw new IllegalStateException("Owner must explicitly acknowledge unresolved ambiguities");
                 }
@@ -439,6 +461,15 @@ public class SdlcWorkflowConfig {
                     }
                     WorkflowPlan revisedPlan = generateWorkflowPlan(state, repositoryContext);
                     saveWorkflowPlan(state, revisedPlan);
+                    if ("MISMATCH".equals(state.getRepositoryFit())) {
+                        fail(state, "Selected repository does not match the clarified requirement: "
+                                + state.getRepositoryFitReason());
+                        return;
+                    }
+                    if ("MATCH".equals(state.getRepositoryFit())) {
+                        String[] repositoryParts = state.getTargetRepositoryId().split("/", 2);
+                        createFeatureBranch(state, repositoryParts[0], repositoryParts[1]);
+                    }
                     state.setTaskStatus("PAUSED_AT_REQUIREMENT_REVIEW");
                     state.recordDecision("REQUIREMENT_REVIEW_REQUIRED",
                             "Revised plan requires owner review before execution");

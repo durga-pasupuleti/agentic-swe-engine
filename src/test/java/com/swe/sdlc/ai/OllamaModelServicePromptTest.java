@@ -29,10 +29,20 @@ class OllamaModelServicePromptTest {
             "repositoryContext", "Existing URL shortener."));
 
         assertTrue(contract.contains("acceptanceCriteria"));
-        assertTrue(contract.contains("requirementCategory"));
-        assertTrue(contract.contains("GREENFIELD, ENHANCEMENT, BROWNFIELD, AMBIGUOUS"));
         assertTrue(contract.contains("ambiguities"));
         assertTrue(contract.contains("assumptions"));
+    }
+
+    @Test
+    void classificationPromptHasCompactChangeAndRepositoryFitContract() {
+        String contract = new PromptTemplateStore().render("requirement-classification.prompt", java.util.Map.of(
+            "requirement", "Add URL expiration to the existing service.",
+            "repositoryContext", "Existing URL shortener service."));
+
+        assertTrue(contract.contains("changeClassification"));
+        assertTrue(contract.contains("repositoryFit"));
+        assertTrue(contract.contains("repositoryFitReason"));
+        assertTrue(contract.contains("INSUFFICIENT_CONTEXT"));
     }
 
     @Test

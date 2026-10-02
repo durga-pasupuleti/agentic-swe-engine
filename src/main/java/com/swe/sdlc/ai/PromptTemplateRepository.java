@@ -29,7 +29,7 @@ final class ClasspathPromptTemplateRepository implements PromptTemplateRepositor
 final class PostgresPromptTemplateRepository implements PromptTemplateRepository {
     private static final List<String> DEFAULT_TEMPLATES = List.of(
             "requirement-analysis.prompt", "architecture.prompt", "task-decomposition.prompt",
-            "implementation.prompt", "tests.prompt", "documentation.prompt");
+            "requirement-classification.prompt", "implementation.prompt", "tests.prompt", "documentation.prompt");
 
     private final String url;
     private final String username;

@@ -171,7 +171,7 @@ $jobAlias = $job.jobAlias
 Invoke-RestMethod -Uri "http://localhost:8080/api/v3/sdlc/jobs/$jobAlias/status" -Headers $headers
 ```
 
-Review `normalizedRequirement`, `acceptanceCriteria`, `ambiguities`, `assumptions`, `identifiedRisks`, `architecturePlan`, and `taskDecomposition`. For a well-defined request with no unresolved ambiguities, approve the plan:
+Review `changeClassification`, `repositoryFit`, `repositoryFitReason`, `normalizedRequirement`, `acceptanceCriteria`, `ambiguities`, `assumptions`, `identifiedRisks`, `architecturePlan`, and `taskDecomposition`. A repository mismatch fails before branch creation; insufficient repository context requires clarification. For a well-defined request with a matching repository and no unresolved ambiguities, approve the plan:
 
 ```powershell
 $review = @{ decision = "APPROVE"; acceptAmbiguities = $false } | ConvertTo-Json

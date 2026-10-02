@@ -36,13 +36,13 @@ public class GitHubMcpManager {
         call("create_branch", Map.of("owner", owner, "repo", repo, "branch", branch));
     }
 
-    public RepositoryContext loadContext(String owner, String repo, String branch, String requirement) {
+    public RepositoryContext loadContext(String owner, String repo, String requirement) {
         String baseBranch = findDefaultBranch(owner, repo);
         if (baseBranch.isBlank()) {
             throw new GitHubMcpException("GitHub MCP did not report the repository default branch");
         }
         JsonNode treeResponse = json(call("get_repository_tree", Map.of(
-                "owner", owner, "repo", repo, "tree_sha", "refs/heads/" + branch, "recursive", true)));
+            "owner", owner, "repo", repo, "tree_sha", "refs/heads/" + baseBranch, "recursive", true)));
         JsonNode tree = treeResponse.path("tree");
         if (!tree.isArray()) {
             throw new GitHubMcpException("GitHub MCP returned an invalid repository tree");
@@ -75,7 +75,7 @@ public class GitHubMcpManager {
                     || file.path("size").asLong(0) > MAX_FILE_CHARS) {
                 continue;
             }
-            String content = readFile(owner, repo, branch, path);
+            String content = readFile(owner, repo, baseBranch, path);
             if (content.length() > MAX_FILE_CHARS || content.contains("\u0000")
                     || context.length() + content.length() > MAX_CONTEXT_CHARS) {
                 continue;

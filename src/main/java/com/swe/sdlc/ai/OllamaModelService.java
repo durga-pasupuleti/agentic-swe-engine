@@ -63,35 +63,70 @@ public class OllamaModelService {
             "repositoryContext", repositoryContext));
         ChatResponse response = chatModel.call(new Prompt(promptText,
                 OllamaChatOptions.builder().model(modelName).temperature(0.1).format("json").build()));
-        String json = response == null || response.getResult() == null
-                || response.getResult().getOutput() == null
-                ? null : response.getResult().getOutput().getText();
-        if (json == null || json.isBlank() || json.length() > 40_000) {
+        String analysisJson = responseText(response);
+        if (analysisJson == null || analysisJson.isBlank() || analysisJson.length() > 40_000) {
             throw new IllegalStateException("Model returned invalid structured requirement analysis");
         }
-        RequirementAnalysis analysis;
+        RequirementDetails details;
         try {
-            analysis = objectMapper.readValue(json, RequirementAnalysis.class);
+            details = objectMapper.readValue(analysisJson, RequirementDetails.class);
         } catch (RuntimeException exception) {
-            throw new IllegalStateException("Model returned invalid JSON or requirementCategory; expected one of "
-                    + "GREENFIELD, ENHANCEMENT, BROWNFIELD, or AMBIGUOUS");
+            throw new IllegalStateException("Model returned invalid structured requirement analysis");
         }
-        if (analysis == null) {
+        if (details == null) {
             throw new IllegalStateException("Model returned an empty structured requirement analysis");
         }
-        if (analysis.requirementCategory() == null) {
-            throw new IllegalStateException("Model response is missing requirementCategory; restart the engine "
-                    + "to activate the updated requirement-analysis prompt");
-        }
-        if (analysis.normalizedProblem() == null || analysis.normalizedProblem().isBlank()
-                || !validItems(analysis.acceptanceCriteria()) || !validItems(analysis.ambiguities())
-                || !validItems(analysis.assumptions()) || !validItems(analysis.risks())
-                || (analysis.requirementCategory() == RequirementCategory.AMBIGUOUS
-                        && analysis.ambiguities().isEmpty())) {
+        if (details.normalizedProblem() == null || details.normalizedProblem().isBlank()
+                || !validItems(details.acceptanceCriteria()) || !validItems(details.ambiguities())
+                || !validItems(details.assumptions()) || !validItems(details.risks())) {
             throw new IllegalStateException("Structured requirement analysis is incomplete or oversized; "
-                    + "AMBIGUOUS classification must include at least one ambiguity");
+                    + "all item arrays must be present and within limits");
         }
-        return analysis;
+
+        RequirementClassification classification = classifyRequirement(requirement, repositoryContext, modelName);
+        List<String> ambiguities = details.ambiguities();
+        if (classification.changeClassification() == ChangeClassification.AMBIGUOUS && ambiguities.isEmpty()) {
+            ambiguities = List.of("Clarify the requested change: " + classification.repositoryFitReason());
+        }
+        return new RequirementAnalysis(classification.changeClassification(), classification.repositoryFit(),
+                classification.repositoryFitReason(), details.normalizedProblem(), details.acceptanceCriteria(),
+                ambiguities, details.assumptions(), details.risks());
+    }
+
+    private RequirementClassification classifyRequirement(
+            String requirement, String repositoryContext, String modelName) {
+        int contextLimit = 16_000;
+        String boundedContext = repositoryContext.length() > contextLimit
+                ? repositoryContext.substring(0, contextLimit) : repositoryContext;
+        String promptText = promptTemplateStore.render("requirement-classification.prompt", Map.of(
+                "requirement", requirement,
+                "repositoryContext", boundedContext));
+        ChatResponse response = chatModel.call(new Prompt(promptText,
+            OllamaChatOptions.builder().model(modelName).temperature(0.0).format("json").build()));
+        String json = responseText(response);
+        if (json == null || json.isBlank() || json.length() > 8_000) {
+            throw new IllegalStateException("Model returned an invalid change classification response");
+        }
+        RequirementClassification classification;
+        try {
+            classification = objectMapper.readValue(json, RequirementClassification.class);
+        } catch (RuntimeException exception) {
+            throw new IllegalStateException("Model returned invalid JSON for change classification");
+        }
+        if (classification == null || classification.changeClassification() == null
+                || classification.repositoryFit() == null || classification.repositoryFitReason() == null
+                || classification.repositoryFitReason().isBlank()
+                || classification.repositoryFitReason().length() > 2_000) {
+            throw new IllegalStateException("Model classification must include changeClassification, repositoryFit, "
+                    + "and a concise repositoryFitReason");
+        }
+        return classification;
+    }
+
+    private static String responseText(ChatResponse response) {
+        return response == null || response.getResult() == null
+                || response.getResult().getOutput() == null
+                ? null : response.getResult().getOutput().getText();
     }
 
     private static boolean validItems(List<String> items) {
@@ -157,15 +192,22 @@ public class OllamaModelService {
     public record FileChangeSet(List<FileChange> files) {
     }
 
-    public enum RequirementCategory {
-        GREENFIELD,
-        ENHANCEMENT,
-        BROWNFIELD,
+    public enum ChangeClassification {
+        NEW_CHANGE,
+        EXISTING_CHANGE,
         AMBIGUOUS
     }
 
+    public enum RepositoryFit {
+        MATCH,
+        MISMATCH,
+        INSUFFICIENT_CONTEXT
+    }
+
     public record RequirementAnalysis(
-            RequirementCategory requirementCategory,
+            ChangeClassification changeClassification,
+            RepositoryFit repositoryFit,
+            String repositoryFitReason,
             String normalizedProblem,
             List<String> acceptanceCriteria,
             List<String> ambiguities,
@@ -173,7 +215,9 @@ public class OllamaModelService {
             List<String> risks) {
 
         public String reviewText() {
-            return "Requirement category: " + requirementCategory
+            return "Change classification: " + changeClassification
+                + "\nRepository fit: " + repositoryFit
+                + "\nRepository fit reason: " + repositoryFitReason
                     + "\n\nNormalized problem:\n" + normalizedProblem
                     + "\n\nAcceptance criteria:\n" + String.join("\n", acceptanceCriteria)
                     + "\n\nAmbiguities:\n" + (ambiguities.isEmpty() ? "None" : String.join("\n", ambiguities))
@@ -181,4 +225,18 @@ public class OllamaModelService {
                     + "\n\nRisks:\n" + (risks.isEmpty() ? "None" : String.join("\n", risks));
         }
     }
+
+        public record RequirementDetails(
+            String normalizedProblem,
+            List<String> acceptanceCriteria,
+            List<String> ambiguities,
+            List<String> assumptions,
+            List<String> risks) {
+        }
+
+        public record RequirementClassification(
+            ChangeClassification changeClassification,
+            RepositoryFit repositoryFit,
+            String repositoryFitReason) {
+        }
 }

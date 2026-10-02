@@ -17,7 +17,7 @@ class SdlcWorkflowFailureTest {
     void discoveryFailureIsAvailableInJobStatusAndAuditTrail() {
         GitHubMcpManager github = mock(GitHubMcpManager.class);
         doThrow(new GitHubMcpManager.GitHubMcpException("GitHub MCP client is unavailable"))
-                .when(github).createBranch(anyString(), anyString(), anyString());
+                .when(github).loadContext(anyString(), anyString(), anyString());
         TaskExecutor directExecutor = Runnable::run;
         SdlcWorkflowConfig workflow = new SdlcWorkflowConfig(directExecutor,
                 mock(OllamaModelCatalog.class), mock(OllamaModelService.class), github);

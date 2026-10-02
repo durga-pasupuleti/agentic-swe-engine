@@ -119,7 +119,7 @@ curl.exe "http://localhost:8080/api/v3/sdlc/jobs/<jobAlias>/status" `
   -H "X-User-Identity: <authenticated-user>"
 ```
 
-Wait for `PAUSED_AT_REQUIREMENT_REVIEW` and inspect `normalizedRequirement`, `acceptanceCriteria`, `ambiguities`, `assumptions`, `identifiedRisks`, `architecturePlan`, and `taskDecomposition`. Approve a clear plan before choosing an execution mode:
+Wait for `PAUSED_AT_REQUIREMENT_REVIEW` and inspect `changeClassification`, `repositoryFit`, `repositoryFitReason`, `normalizedRequirement`, `acceptanceCriteria`, `ambiguities`, `assumptions`, `identifiedRisks`, `architecturePlan`, and `taskDecomposition`. A repository mismatch fails before branch creation; insufficient context must be clarified. Approve a clear plan with a matching repository before choosing an execution mode:
 
 ```powershell
 curl.exe -X POST "http://localhost:8080/api/v3/sdlc/jobs/<jobAlias>/requirement-review" `

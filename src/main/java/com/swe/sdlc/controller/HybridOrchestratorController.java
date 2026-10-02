@@ -102,7 +102,9 @@ public class HybridOrchestratorController {
         status.put("status", Objects.toString(state.getTaskStatus(), "UNKNOWN"));
         status.put("requirement", state.getRawRequirement());
         status.put("effectiveRequirement", state.getEffectiveRequirement());
-        status.put("requirementCategory", state.getRequirementCategory());
+        status.put("changeClassification", state.getChangeClassification());
+        status.put("repositoryFit", state.getRepositoryFit());
+        status.put("repositoryFitReason", state.getRepositoryFitReason());
         status.put("requirementAnalysis", state.getRequirementAnalysis());
         status.put("normalizedRequirement", state.getNormalizedRequirement());
         status.put("acceptanceCriteria", state.getAcceptanceCriteria());
@@ -154,6 +156,10 @@ public class HybridOrchestratorController {
 
         if ("APPROVE".equals(decision) && !state.getAmbiguities().isEmpty() && !acceptAmbiguities) {
             return error(HttpStatus.CONFLICT, "Explicitly acknowledge the listed ambiguities before approval.");
+        }
+        if ("APPROVE".equals(decision) && !"MATCH".equals(state.getRepositoryFit())) {
+            return error(HttpStatus.CONFLICT,
+                    "Repository fit must be MATCH before approval; clarify the request or submit it against the correct repository.");
         }
         workflowConfig.reviewRequirement(jobAlias, decision, clarifiedRequirement, acceptAmbiguities);
         return ResponseEntity.accepted().body(Map.of(
