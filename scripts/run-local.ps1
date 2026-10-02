@@ -34,6 +34,11 @@ try {
         throw 'Docker Desktop is not ready. Start its Linux engine and try again.'
     }
 
+    & docker pull ghcr.io/github/github-mcp-server:v1.13.0
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Could not pull the official GitHub MCP server image.'
+    }
+
     & docker compose up -d sdlc-prompts-db sdlc-ollama-engine
     if ($LASTEXITCODE -ne 0) {
         throw 'Could not start the local PostgreSQL and Ollama services.'
