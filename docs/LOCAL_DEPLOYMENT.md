@@ -123,6 +123,14 @@ Save it as `.github/workflows/ci.yml` in the target repository and push it to th
 
 ## 8. Build and run the engine
 
+For a guided one-command launch, open PowerShell in the project directory and run:
+
+```powershell
+.\scripts\run-local.ps1
+```
+
+The script prompts for the PAT without echoing it, starts PostgreSQL and Ollama, pulls either configured local model if missing, runs `mvn clean verify`, then starts the API. The token is removed from the launcher process environment when Spring Boot exits. You can use this instead of manually repeating steps 4-6.
+
 From the engine project directory, in the same PowerShell window where you set the environment variables:
 
 ```powershell

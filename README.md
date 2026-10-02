@@ -2,6 +2,8 @@
 
 Spring Boot workflow engine using Spring AI for Ollama and the official GitHub MCP server for repository and Actions operations.
 
+Development acknowledgment: GitHub Copilot was used for code assistance and documentation.
+
 See [RUNBOOK.md](RUNBOOK.md) for setup, environment configuration, API examples, and troubleshooting.
 For a step-by-step Windows setup with local Ollama and GitHub App configuration, see [docs/LOCAL_DEPLOYMENT.md](docs/LOCAL_DEPLOYMENT.md).
 Importable Postman scenarios for greenfield, brownfield, tests, docs, ambiguity, and workflow gates are in [docs/postman/Agentic-SWE-Engine.postman_collection.json](docs/postman/Agentic-SWE-Engine.postman_collection.json).
@@ -26,6 +28,14 @@ ollama pull llama3.2
 ```
 
 ## Run
+
+For the guided local setup, run the PowerShell launcher. It prompts for the PAT without echoing it, starts local dependencies, runs verification, and starts the API:
+
+```powershell
+.\scripts\run-local.ps1
+```
+
+For a manually configured environment, set `GITHUB_PERSONAL_ACCESS_TOKEN` and the local service variables before using:
 
 ```powershell
 mvn spring-boot:run
