@@ -29,6 +29,7 @@ public class SdlcState {
     private final Map<String, Long> stageDurationsMillis = new ConcurrentHashMap<>();
 
     private volatile String modelAlias = "code";
+    private volatile String requirementCategory = "PENDING";
     private volatile String requirementAnalysis = "";
     private volatile String normalizedRequirement = "";
     private volatile List<String> acceptanceCriteria = List.of();
@@ -95,6 +96,14 @@ public class SdlcState {
 
     public String getRequirementAnalysis() {
         return requirementAnalysis;
+    }
+
+    public String getRequirementCategory() {
+        return requirementCategory;
+    }
+
+    public void setRequirementCategory(String requirementCategory) {
+        this.requirementCategory = requirementCategory;
     }
 
     public void setRequirementAnalysis(String requirementAnalysis) {

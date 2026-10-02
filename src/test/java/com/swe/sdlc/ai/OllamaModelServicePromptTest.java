@@ -29,6 +29,8 @@ class OllamaModelServicePromptTest {
             "repositoryContext", "Existing URL shortener."));
 
         assertTrue(contract.contains("acceptanceCriteria"));
+        assertTrue(contract.contains("requirementCategory"));
+        assertTrue(contract.contains("GREENFIELD, ENHANCEMENT, BROWNFIELD, AMBIGUOUS"));
         assertTrue(contract.contains("ambiguities"));
         assertTrue(contract.contains("assumptions"));
     }

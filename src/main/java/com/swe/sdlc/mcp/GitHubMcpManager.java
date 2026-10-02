@@ -197,8 +197,15 @@ public class GitHubMcpManager {
     }
 
     private McpSchema.CallToolResult call(String name, Map<String, Object> arguments) {
-        if (!TOOLS.contains(name) || clients.size() != 1) {
-            throw new GitHubMcpException("GitHub MCP client is unavailable or tool is not allowed");
+        if (!TOOLS.contains(name)) {
+            throw new GitHubMcpException("GitHub MCP tool is not allowed: " + name);
+        }
+        if (clients.isEmpty()) {
+            throw new GitHubMcpException(
+                    "GitHub MCP client is unavailable; enable SDLC_GITHUB_MCP_ENABLED and check MCP server startup logs");
+        }
+        if (clients.size() != 1) {
+            throw new GitHubMcpException("Expected exactly one GitHub MCP client but found " + clients.size());
         }
         McpSyncClient client = clients.getFirst();
         if (!client.isInitialized()) {

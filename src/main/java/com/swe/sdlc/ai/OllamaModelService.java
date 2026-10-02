@@ -69,17 +69,29 @@ public class OllamaModelService {
         if (json == null || json.isBlank() || json.length() > 40_000) {
             throw new IllegalStateException("Model returned invalid structured requirement analysis");
         }
+        RequirementAnalysis analysis;
         try {
-            RequirementAnalysis analysis = objectMapper.readValue(json, RequirementAnalysis.class);
-            if (analysis == null || analysis.normalizedProblem() == null || analysis.normalizedProblem().isBlank()
-                    || !validItems(analysis.acceptanceCriteria()) || !validItems(analysis.ambiguities())
-                    || !validItems(analysis.assumptions()) || !validItems(analysis.risks())) {
-                throw new IllegalStateException("Structured requirement analysis is incomplete or oversized");
-            }
-            return analysis;
+            analysis = objectMapper.readValue(json, RequirementAnalysis.class);
         } catch (RuntimeException exception) {
-            throw new IllegalStateException("Model returned invalid structured requirement analysis", exception);
+            throw new IllegalStateException("Model returned invalid JSON or requirementCategory; expected one of "
+                    + "GREENFIELD, ENHANCEMENT, BROWNFIELD, or AMBIGUOUS");
         }
+        if (analysis == null) {
+            throw new IllegalStateException("Model returned an empty structured requirement analysis");
+        }
+        if (analysis.requirementCategory() == null) {
+            throw new IllegalStateException("Model response is missing requirementCategory; restart the engine "
+                    + "to activate the updated requirement-analysis prompt");
+        }
+        if (analysis.normalizedProblem() == null || analysis.normalizedProblem().isBlank()
+                || !validItems(analysis.acceptanceCriteria()) || !validItems(analysis.ambiguities())
+                || !validItems(analysis.assumptions()) || !validItems(analysis.risks())
+                || (analysis.requirementCategory() == RequirementCategory.AMBIGUOUS
+                        && analysis.ambiguities().isEmpty())) {
+            throw new IllegalStateException("Structured requirement analysis is incomplete or oversized; "
+                    + "AMBIGUOUS classification must include at least one ambiguity");
+        }
+        return analysis;
     }
 
     private static boolean validItems(List<String> items) {
@@ -145,7 +157,15 @@ public class OllamaModelService {
     public record FileChangeSet(List<FileChange> files) {
     }
 
+    public enum RequirementCategory {
+        GREENFIELD,
+        ENHANCEMENT,
+        BROWNFIELD,
+        AMBIGUOUS
+    }
+
     public record RequirementAnalysis(
+            RequirementCategory requirementCategory,
             String normalizedProblem,
             List<String> acceptanceCriteria,
             List<String> ambiguities,
@@ -153,7 +173,8 @@ public class OllamaModelService {
             List<String> risks) {
 
         public String reviewText() {
-            return "Normalized problem:\n" + normalizedProblem
+            return "Requirement category: " + requirementCategory
+                    + "\n\nNormalized problem:\n" + normalizedProblem
                     + "\n\nAcceptance criteria:\n" + String.join("\n", acceptanceCriteria)
                     + "\n\nAmbiguities:\n" + (ambiguities.isEmpty() ? "None" : String.join("\n", ambiguities))
                     + "\n\nAssumptions:\n" + (assumptions.isEmpty() ? "None" : String.join("\n", assumptions))

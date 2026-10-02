@@ -37,17 +37,26 @@ $body = $null
 
 switch ($Action) {
     'New' {
-        if (-not $Repository -or -not $Scenario) {
-            throw 'New requires -Repository owner/name and -Scenario.'
+        if (-not $Repository) {
+            throw 'New requires -Repository owner/name.'
         }
-        $requirementText = switch ($Scenario) {
-            'Greenfield' { 'Build a URL shortener with create and resolve APIs, collision-safe codes, configurable expiration, persistent storage, input validation, tests, and API documentation.' }
-            'Enhancement' { 'In the existing service, add configurable URL expiration. Expired links must return HTTP 410. Preserve the current stack and API conventions.' }
-            'Refactor' { 'Refactor URL resolution to isolate persistence behind the existing repository abstraction. Preserve behavior and add regression tests.' }
-            'BugFix' { 'Fix URL short-code creation so concurrent requests cannot persist duplicate codes. Add a regression test for the race and verify the fix.' }
-            'TestsOnly' { 'Improve unit and integration coverage for code collisions, expired links, invalid URLs, and not-found behavior. Do not change production behavior unless a test proves a defect.' }
-            'DocsOnly' { 'Update the README and API documentation for create, resolve, expiration, error responses, configuration, and local development. Do not change production code or tests.' }
-            'Ambiguous' { 'Make links safer.' }
+        if (-not [string]::IsNullOrWhiteSpace($Requirement)) {
+            if ($Scenario) {
+                throw 'Use either -Requirement or -Scenario for New, not both.'
+            }
+            $requirementText = $Requirement
+        } elseif ($Scenario) {
+            $requirementText = switch ($Scenario) {
+                'Greenfield' { 'Build a URL shortener with create and resolve APIs, collision-safe codes, configurable expiration, persistent storage, input validation, tests, and API documentation.' }
+                'Enhancement' { 'In the existing service, add configurable URL expiration. Expired links must return HTTP 410. Preserve the current stack and API conventions.' }
+                'Refactor' { 'Refactor URL resolution to isolate persistence behind the existing repository abstraction. Preserve behavior and add regression tests.' }
+                'BugFix' { 'Fix URL short-code creation so concurrent requests cannot persist duplicate codes. Add a regression test for the race and verify the fix.' }
+                'TestsOnly' { 'Improve unit and integration coverage for code collisions, expired links, invalid URLs, and not-found behavior. Do not change production behavior unless a test proves a defect.' }
+                'DocsOnly' { 'Update the README and API documentation for create, resolve, expiration, error responses, configuration, and local development. Do not change production code or tests.' }
+                'Ambiguous' { 'Make links safer.' }
+            }
+        } else {
+            throw 'New requires either -Requirement "what to implement" or -Scenario.'
         }
         $method = 'POST'
         $path = '/api/v3/sdlc/jobs'

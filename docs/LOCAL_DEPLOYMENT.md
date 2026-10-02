@@ -67,7 +67,7 @@ $env:SDLC_PROMPT_DATABASE_USERNAME = "sdlc_prompts"
 $env:SDLC_PROMPT_DATABASE_PASSWORD = "local-development-only"
 ```
 
-The first app startup creates the prompt table and seeds version 1 from the checked-in files. Subsequent prompt loads use the active database row. New prompt edits should be inserted as a new version and activated transactionally; previous versions remain available for rollback. The Compose database is bound to loopback port 5433 to avoid colliding with an existing local Postgres service. The sample password is for local development only; change it before using a shared database.
+Flyway applies versioned database migrations at startup; the engine then seeds missing bootstrap prompt versions from the checked-in files. Subsequent prompt loads use the active database row. New prompt edits should be inserted as a new version and activated transactionally; previous versions remain available for rollback. The Compose database is bound to loopback port 5433 to avoid colliding with an existing local Postgres service. The sample password is for local development only; change it before using a shared database.
 
 ## 6. Enter the GitHub token locally
 

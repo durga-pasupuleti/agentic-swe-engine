@@ -17,6 +17,8 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.core.task.TaskRejectedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.swe.sdlc.ai.OllamaModelService;
 import com.swe.sdlc.mcp.GitHubMcpManager;
@@ -33,6 +35,7 @@ import com.swe.sdlc.workflow.SdlcWorkflowGraph.Stage;
 public class SdlcWorkflowConfig {
     private static final int MAX_PATCH_ATTEMPTS = 3;
     private static final int MAX_FAILURE_LOG_LENGTH = 12_000;
+    private static final Logger LOGGER = LoggerFactory.getLogger(SdlcWorkflowConfig.class);
 
     private final Map<String, SdlcState> jobRegistry = new ConcurrentHashMap<>();
     private final Map<String, GitHubMcpManager.RepositoryContext> repositoryContexts = new ConcurrentHashMap<>();
@@ -349,6 +352,7 @@ public class SdlcWorkflowConfig {
                         OllamaModelService.RequirementAnalysis understanding = withModelFallback(state, stage.name(),
                             alias -> ollamaModelService.analyzeRequirement(
                                 state.getEffectiveRequirement(), repositoryContext.text(), alias));
+                        state.setRequirementCategory(understanding.requirementCategory().name());
                         state.setNormalizedRequirement(understanding.normalizedProblem());
                         state.setAcceptanceCriteria(understanding.acceptanceCriteria());
                         state.setAmbiguities(understanding.ambiguities());
@@ -566,9 +570,17 @@ public class SdlcWorkflowConfig {
     }
 
     private static void fail(SdlcState state, String message) {
-        state.setCompilerLogs(message);
+        String safeMessage = message
+                .replaceAll("(?i)\\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\\b", "[REDACTED]")
+                .replaceAll("(?i)(Bearer\\s+)[A-Za-z0-9._~+/-]+=*", "$1[REDACTED]");
+        if (safeMessage.length() > MAX_FAILURE_LOG_LENGTH) {
+            safeMessage = safeMessage.substring(safeMessage.length() - MAX_FAILURE_LOG_LENGTH);
+        }
+        state.setCompilerLogs(safeMessage);
         state.setTaskStatus("FAILED");
-        state.setEngineeringSummary(buildEngineeringSummary(state, "FAILED", message));
+        state.setEngineeringSummary(buildEngineeringSummary(state, "FAILED", safeMessage));
+        state.recordEvent("WORKFLOW", "FAILURE_DETAIL", safeMessage);
+        LOGGER.error("SDLC job {} failed: {}", state.getJobAlias(), safeMessage);
     }
 
     private static String buildEngineeringSummary(SdlcState state, String outcome, String validation) {

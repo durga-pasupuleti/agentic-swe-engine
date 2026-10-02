@@ -24,13 +24,16 @@ The engine runs locally; model calls go to local Ollama. GitHub API calls are re
 
 The target must be an **existing** `owner/repository` that the token can access. The engine creates a feature branch; it does not create a new GitHub repository. The target repository must also have GitHub Actions enabled with a workflow triggered by `agentic/**` branches.
 
-The helper sends one of these preset requirements:
+Submit a free-form implementation prompt with `-Requirement`. The helper returns as soon as the job is accepted; use the returned `jobAlias` to check progress. For example:
 
 ```powershell
-.\scripts\curl\sdlc-api.ps1 -Action New -Repository "owner/repository" -Scenario Greenfield -Identity "local-user"
+.\scripts\curl\sdlc-api.ps1 -Action New `
+	-Repository "owner/repository" `
+	-Requirement "Add per-link expiration. Expired links return HTTP 410. Preserve existing endpoints and add tests." `
+	-Identity "local-user"
 ```
 
-Valid `-Scenario` values are `Greenfield`, `Enhancement`, `Refactor`, `BugFix`, `TestsOnly`, `DocsOnly`, and `Ambiguous`. Replace `owner/repository` with a real repository; literal placeholders will result in GitHub 404s. The presets are examples. For a repository-specific requirement, call `POST /api/v3/sdlc/jobs` with your own requirement text:
+Alternatively, `-Scenario` may select a preset: `Greenfield`, `Enhancement`, `Refactor`, `BugFix`, `TestsOnly`, `DocsOnly`, or `Ambiguous`. Use either `-Requirement` or `-Scenario`. Replace `owner/repository` with a real repository; literal placeholders will result in GitHub 404s. For direct API use, call `POST /api/v3/sdlc/jobs` with your requirement text:
 
 ```powershell
 $payload = @{
@@ -57,7 +60,7 @@ $headers = @{ "X-User-Identity" = "local-user" }
 Invoke-RestMethod -Uri "http://localhost:8080/api/v3/sdlc/jobs/$jobAlias/status" -Headers $headers
 ```
 
-When status is `PAUSED_AT_REQUIREMENT_REVIEW`, review `normalizedRequirement`, `acceptanceCriteria`, `ambiguities`, `assumptions`, `identifiedRisks`, `architecturePlan`, and `taskDecomposition`. For an ambiguous requirement, clarify it first:
+When status is `PAUSED_AT_REQUIREMENT_REVIEW`, review the model-selected `requirementCategory` (`GREENFIELD`, `ENHANCEMENT`, `BROWNFIELD`, or `AMBIGUOUS`), along with `normalizedRequirement`, `acceptanceCriteria`, `ambiguities`, `assumptions`, `identifiedRisks`, `architecturePlan`, and `taskDecomposition`. For an ambiguous requirement, clarify it first:
 
 ```powershell
 $review = @{ decision = "CLARIFY"; requirement = "State the exact behavior and acceptance criteria." } | ConvertTo-Json -Compress

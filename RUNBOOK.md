@@ -80,7 +80,7 @@ $env:SDLC_PROMPT_DATABASE_USERNAME = "sdlc_prompts"
 $env:SDLC_PROMPT_DATABASE_PASSWORD = "local-development-only"
 ```
 
-On first startup, the engine creates `prompt_template` and seeds each prompt as active version 1 from the classpath files. PostgreSQL is the source of truth afterward; each request loads the active version. Inspect versions with:
+Flyway applies the versioned schema migrations at startup. The engine then seeds missing prompt templates as active bootstrap versions from the classpath files. PostgreSQL is the source of truth afterward; each request loads the active version. Inspect versions with:
 
 ```sql
 SELECT template_name, version, active, created_by, created_at

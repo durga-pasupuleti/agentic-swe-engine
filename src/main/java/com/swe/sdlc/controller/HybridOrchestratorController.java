@@ -102,6 +102,7 @@ public class HybridOrchestratorController {
         status.put("status", Objects.toString(state.getTaskStatus(), "UNKNOWN"));
         status.put("requirement", state.getRawRequirement());
         status.put("effectiveRequirement", state.getEffectiveRequirement());
+        status.put("requirementCategory", state.getRequirementCategory());
         status.put("requirementAnalysis", state.getRequirementAnalysis());
         status.put("normalizedRequirement", state.getNormalizedRequirement());
         status.put("acceptanceCriteria", state.getAcceptanceCriteria());

@@ -1,6 +1,7 @@
 package com.swe.sdlc.ai;
 
 import org.springframework.core.io.ClassPathResource;
+import org.flywaydb.core.Flyway;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
@@ -59,17 +60,16 @@ final class PostgresPromptTemplateRepository implements PromptTemplateRepository
     }
 
     private void initializeAndSeed() {
+        Flyway.configure()
+            .dataSource(url, username, password)
+            .locations("classpath:db/migration")
+            .baselineOnMigrate(true)
+            .baselineVersion("0")
+            .load()
+            .migrate();
+
         try (Connection connection = DriverManager.getConnection(url, username, password)) {
             connection.setAutoCommit(false);
-            try (var statement = connection.createStatement()) {
-                statement.executeUpdate("CREATE TABLE IF NOT EXISTS prompt_template ("
-                        + "template_name VARCHAR(100) NOT NULL, version INTEGER NOT NULL, content TEXT NOT NULL, "
-                        + "active BOOLEAN NOT NULL DEFAULT FALSE, created_by VARCHAR(200) NOT NULL, "
-                        + "created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, "
-                        + "PRIMARY KEY (template_name, version))");
-                statement.executeUpdate("CREATE UNIQUE INDEX IF NOT EXISTS uq_prompt_template_active "
-                        + "ON prompt_template (template_name) WHERE active = TRUE");
-            }
             for (String templateName : DEFAULT_TEMPLATES) {
                 seedIfMissing(connection, templateName);
             }
@@ -80,14 +80,25 @@ final class PostgresPromptTemplateRepository implements PromptTemplateRepository
     }
 
     private void seedIfMissing(Connection connection, String templateName) throws SQLException {
+        String content = new ClasspathPromptTemplateRepository().load(templateName);
         try (PreparedStatement active = connection.prepareStatement(
-                "SELECT 1 FROM prompt_template WHERE template_name = ? AND active = TRUE")) {
+                "SELECT content, created_by FROM prompt_template WHERE template_name = ? AND active = TRUE")) {
             active.setString(1, templateName);
             try (ResultSet result = active.executeQuery()) {
                 if (result.next()) {
-                    return;
+                    String activeContent = result.getString("content");
+                    String createdBy = result.getString("created_by");
+                    if (content.equals(activeContent) || !"classpath-bootstrap".equals(createdBy)) {
+                        return;
+                    }
                 }
             }
+        }
+
+        try (PreparedStatement deactivate = connection.prepareStatement(
+                "UPDATE prompt_template SET active = FALSE WHERE template_name = ? AND active = TRUE")) {
+            deactivate.setString(1, templateName);
+            deactivate.executeUpdate();
         }
 
         int nextVersion;
@@ -99,7 +110,6 @@ final class PostgresPromptTemplateRepository implements PromptTemplateRepository
                 nextVersion = result.getInt("next_version");
             }
         }
-        String content = new ClasspathPromptTemplateRepository().load(templateName);
         try (PreparedStatement insert = connection.prepareStatement(
                 "INSERT INTO prompt_template (template_name, version, content, active, created_by) "
                         + "VALUES (?, ?, ?, TRUE, 'classpath-bootstrap')")) {

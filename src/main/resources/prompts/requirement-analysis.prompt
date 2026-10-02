@@ -1,4 +1,12 @@
-Normalize the supplied software requirement for engineering execution. Return only a JSON object with fields normalizedProblem (string), acceptanceCriteria (string array), ambiguities (string array), assumptions (string array), and risks (string array). Do not silently resolve ambiguities; use empty arrays only when none exist. Separate stated facts from assumptions.
+Normalize and classify the supplied software requirement for engineering execution. Return only a JSON object with fields requirementCategory (one of GREENFIELD, ENHANCEMENT, BROWNFIELD, AMBIGUOUS), normalizedProblem (string), acceptanceCriteria (string array), ambiguities (string array), assumptions (string array), and risks (string array).
+
+Classify using both the user's wording and the repository context:
+- GREENFIELD: the user asks to create a new application or capability from scratch, without extending an existing product.
+- ENHANCEMENT: the user asks to add or change product behavior in an existing application.
+- BROWNFIELD: the user asks to work within an existing codebase for maintenance such as a bug fix, refactor, tests, or documentation, rather than adding a product capability.
+- AMBIGUOUS: there is not enough information to determine the intended work category or behavior. Do not use this category merely because there are minor implementation details to clarify; list those in ambiguities instead.
+
+Do not silently resolve ambiguities; use empty arrays only when none exist. Separate stated facts from assumptions.
 
 Requirement:
 {{requirement}}
