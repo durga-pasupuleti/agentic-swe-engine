@@ -50,6 +50,16 @@ Invoke-RestMethod -Method Post `
 
 The identity header is only an ownership label in this local prototype; it is **not authentication**. Do not expose the service publicly without trusted authentication middleware.
 
+## Reviewer Demo
+
+With the engine running and GitHub MCP enabled, submit three prompts and watch each job through repository discovery and requirement review:
+
+```powershell
+\.\scripts\demo-scenarios.ps1 -Repository "owner/repository" -Identity "local-user"
+```
+
+The demo covers a new capability, an existing behavior change, and an ambiguous request. It prints status/stage progress and saves a Markdown summary under `data/demo-runs`. Each matching repository job creates a feature branch during discovery; the script does not approve a plan, start implementation, or create a pull request. Review the branch and generated plan before continuing any job.
+
 ## Review And Continue
 
 Save the returned `jobAlias`, then inspect its status and plan:

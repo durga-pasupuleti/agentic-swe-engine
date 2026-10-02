@@ -76,21 +76,40 @@ public class OllamaModelService {
         if (details == null) {
             throw new IllegalStateException("Model returned an empty structured requirement analysis");
         }
-        if (details.normalizedProblem() == null || details.normalizedProblem().isBlank()
-                || !validItems(details.acceptanceCriteria()) || !validItems(details.ambiguities())
-                || !validItems(details.assumptions()) || !validItems(details.risks())) {
-            throw new IllegalStateException("Structured requirement analysis is incomplete or oversized; "
-                    + "all item arrays must be present and within limits");
+        List<String> analysisWarnings = new java.util.ArrayList<>();
+        String normalizedProblem = details.normalizedProblem();
+        if (normalizedProblem == null || normalizedProblem.isBlank()) {
+            normalizedProblem = requirement;
+            analysisWarnings.add("The model omitted the normalized problem; using the submitted requirement verbatim.");
         }
+        List<String> acceptanceCriteria = analysisItemsOrEmpty(
+                details.acceptanceCriteria(), "acceptanceCriteria", analysisWarnings);
+        List<String> ambiguities = new java.util.ArrayList<>(analysisItemsOrEmpty(
+                details.ambiguities(), "ambiguities", analysisWarnings));
+        List<String> assumptions = analysisItemsOrEmpty(details.assumptions(), "assumptions", analysisWarnings);
+        List<String> risks = analysisItemsOrEmpty(details.risks(), "risks", analysisWarnings);
+        ambiguities.addAll(analysisWarnings);
 
         RequirementClassification classification = classifyRequirement(requirement, repositoryContext, modelName);
-        List<String> ambiguities = details.ambiguities();
         if (classification.changeClassification() == ChangeClassification.AMBIGUOUS && ambiguities.isEmpty()) {
             ambiguities = List.of("Clarify the requested change: " + classification.repositoryFitReason());
         }
         return new RequirementAnalysis(classification.changeClassification(), classification.repositoryFit(),
-                classification.repositoryFitReason(), details.normalizedProblem(), details.acceptanceCriteria(),
-                ambiguities, details.assumptions(), details.risks());
+                classification.repositoryFitReason(), normalizedProblem, acceptanceCriteria,
+                ambiguities, assumptions, risks);
+    }
+
+    private static List<String> analysisItemsOrEmpty(
+            List<String> items, String fieldName, List<String> analysisWarnings) {
+        if (items == null) {
+            analysisWarnings.add("The model omitted " + fieldName + "; review this analysis for completeness.");
+            return List.of();
+        }
+        if (!validItems(items)) {
+            throw new IllegalStateException("Structured requirement analysis contains invalid or oversized "
+                    + fieldName);
+        }
+        return items;
     }
 
     private RequirementClassification classifyRequirement(
